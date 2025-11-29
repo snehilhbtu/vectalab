@@ -1000,6 +1000,225 @@ def _show_logo_results(output_path: Path, metrics: dict):
     console.print(Panel(result_table, title=title, border_style=border_style))
 
 
+@app.command("premium", rich_help_panel="Commands")
+def premium(
+    input_file: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to input image (PNG, JPG, etc.)",
+            show_default=False,
+        )
+    ],
+    output_file: Annotated[
+        Optional[Path],
+        typer.Argument(
+            help="Path for output SVG [dim](default: input_name.svg)[/]",
+            show_default=False,
+        )
+    ] = None,
+    target_ssim: Annotated[
+        float,
+        typer.Option(
+            "--quality", "-q",
+            help="Target SSIM quality (0.90-1.0)",
+            min=0.90,
+            max=1.0,
+            rich_help_panel="Quality Options",
+        )
+    ] = 0.98,
+    colors: Annotated[
+        Optional[int],
+        typer.Option(
+            "--colors", "-c",
+            help="Force specific palette size (auto-detect if not set)",
+            min=4,
+            max=64,
+            rich_help_panel="Quality Options",
+        )
+    ] = None,
+    iterations: Annotated[
+        int,
+        typer.Option(
+            "--iterations", "-i",
+            help="Maximum refinement iterations",
+            min=1,
+            max=10,
+            rich_help_panel="Quality Options",
+        )
+    ] = 5,
+    mode: Annotated[
+        str,
+        typer.Option(
+            "--mode", "-m",
+            help="Optimization mode: 'logo' for logos/icons, 'photo' for photographs",
+            rich_help_panel="Quality Options",
+        )
+    ] = "auto",
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose", "-v",
+            help="Show detailed progress information",
+        )
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force", "-f",
+            help="Overwrite output file if it exists",
+        )
+    ] = False,
+):
+    """
+    ✨ Premium SOTA-quality vectorization.
+    
+    This command uses state-of-the-art techniques for the best possible output:
+    
+    [bold cyan]Features:[/]
+    • Edge-aware preprocessing - Preserves sharp edges in text/logos
+    • Iterative refinement - Keeps improving until quality target met
+    • Color snapping - Rounds colors to exact values (pure black/white)
+    • Path merging - Combines same-color paths for smaller files
+    
+    [bold]Examples:[/]
+    
+      [dim]# Auto-detect and optimize[/]
+      $ vectalab premium logo.png
+      
+      [dim]# Logo mode with 16 colors[/]
+      $ vectalab premium logo.jpg --mode logo -c 16
+      
+      [dim]# High quality photo conversion[/]
+      $ vectalab premium photo.jpg --mode photo -q 0.95
+      
+      [dim]# Maximum quality with more iterations[/]
+      $ vectalab premium image.png -q 0.99 -i 8
+    """
+    # Validate input
+    input_path = validate_input_file(input_file)
+    
+    # Generate output path if not specified
+    if output_file is None:
+        output_file = input_path.with_suffix('.svg')
+    output_path = validate_output_file(output_file)
+    
+    # Check if output exists
+    if output_path.exists() and not force:
+        overwrite = typer.confirm(
+            f"Output file {output_path} already exists. Overwrite?",
+            default=False
+        )
+        if not overwrite:
+            console.print("[yellow]Operation cancelled.[/]")
+            raise typer.Exit(0)
+    
+    show_banner()
+    
+    # Show info
+    info_table = Table(box=box.ROUNDED, show_header=False, border_style="dim")
+    info_table.add_column("Property", style="cyan")
+    info_table.add_column("Value")
+    info_table.add_row("📁 Input", str(input_path))
+    info_table.add_row("📄 Output", str(output_path))
+    info_table.add_row("🔧 Method", "Premium (SOTA)")
+    info_table.add_row("🎯 Target SSIM", f"{target_ssim*100:.0f}%")
+    info_table.add_row("🔄 Iterations", str(iterations))
+    if mode != "auto":
+        info_table.add_row("📊 Mode", mode.capitalize())
+    if colors:
+        info_table.add_row("🎨 Colors", str(colors))
+    console.print(info_table)
+    console.print()
+    
+    try:
+        from vectalab.premium import vectorize_premium, vectorize_logo_premium, vectorize_photo_premium
+        
+        with console.status("[cyan]Applying premium vectorization...[/]"):
+            if mode == "logo":
+                svg_path, metrics = vectorize_logo_premium(
+                    str(input_path),
+                    str(output_path),
+                    verbose=verbose,
+                )
+            elif mode == "photo":
+                svg_path, metrics = vectorize_photo_premium(
+                    str(input_path),
+                    str(output_path),
+                    n_colors=colors or 32,
+                    verbose=verbose,
+                )
+            else:  # auto
+                svg_path, metrics = vectorize_premium(
+                    str(input_path),
+                    str(output_path),
+                    target_ssim=target_ssim,
+                    max_iterations=iterations,
+                    n_colors=colors,
+                    verbose=verbose,
+                )
+        
+        # Show results
+        _show_premium_results(output_path, metrics)
+        
+    except ImportError as e:
+        error_console.print(f"❌ Missing dependency: {e}")
+        error_console.print("Install with: pip install vtracer cairosvg scikit-image")
+        raise typer.Exit(1)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]⚠️ Operation cancelled by user.[/]")
+        raise typer.Exit(130)
+    except Exception as e:
+        error_console.print(f"❌ Conversion failed: {e}")
+        if verbose:
+            console.print_exception()
+        raise typer.Exit(1)
+
+
+def _show_premium_results(output_path: Path, metrics: dict):
+    """Display premium conversion results."""
+    size_bytes = metrics.get('file_size', output_path.stat().st_size)
+    
+    if size_bytes < 1024:
+        size_str = f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        size_str = f"{size_bytes / 1024:.1f} KB"
+    else:
+        size_str = f"{size_bytes / (1024 * 1024):.2f} MB"
+    
+    # Create results table
+    result_table = Table(box=box.ROUNDED, show_header=False, border_style="magenta")
+    result_table.add_column("Metric", style="bold")
+    result_table.add_column("Value")
+    
+    # SSIM
+    ssim_val = metrics.get('ssim', 0)
+    target_ssim = metrics.get('target_ssim', 0.98)
+    ssim_text = format_ssim(ssim_val)
+    if ssim_val >= target_ssim:
+        ssim_text += " ✅"
+    result_table.add_row("Quality (SSIM)", ssim_text)
+    
+    # File size
+    result_table.add_row("File Size", size_str)
+    
+    # Path count
+    path_count = metrics.get('path_count', 0)
+    result_table.add_row("SVG Paths", str(path_count))
+    
+    # Color palette
+    palette = metrics.get('palette_size', 0)
+    orig_colors = metrics.get('original_colors', 0)
+    if palette and orig_colors:
+        result_table.add_row("Colors", f"{orig_colors:,} → {palette}")
+    
+    result_table.add_row("Output", str(output_path))
+    
+    title = "✨ Premium Vectorization Complete"
+    
+    console.print()
+    console.print(Panel(result_table, title=title, border_style="magenta"))
+
+
 @app.command("smart", rich_help_panel="Commands")
 def smart(
     input_file: Annotated[

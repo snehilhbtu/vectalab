@@ -42,6 +42,13 @@ from .quality import (
     reduce_to_palette,
     QUALITY_PRESETS,
 )
+from .premium import (
+    vectorize_premium,
+    vectorize_logo_premium,
+    vectorize_photo_premium,
+    edge_aware_denoise,
+    reduce_to_clean_palette,
+)
 
 __version__ = "0.4.0"
 __author__ = "Vectalab Contributors"
@@ -80,4 +87,10 @@ __all__ = [
     'analyze_image',
     'reduce_to_palette',
     'QUALITY_PRESETS',
+    # Premium (SOTA) vectorization
+    'vectorize_premium',
+    'vectorize_logo_premium',
+    'vectorize_photo_premium',
+    'edge_aware_denoise',
+    'reduce_to_clean_palette',
 ]
