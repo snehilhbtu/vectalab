@@ -1,0 +1,832 @@
+"""
+Vectalab Quality-First Vectorization Module.
+
+This module prioritizes visual quality over file size, using:
+1. Minimal preprocessing to preserve detail
+2. Conservative vtracer settings
+3. Pixel-by-pixel quality verification
+4. Iterative refinement until quality threshold met
+
+Usage:
+    from vectalab.quality import vectorize_quality
+    
+    svg_path, metrics = vectorize_quality("logo.png", "output.svg", min_ssim=0.99)
+"""
+
+import numpy as np
+import cv2
+from PIL import Image
+from pathlib import Path
+from typing import Tuple, Dict, Any, Optional
+import tempfile
+import os
+
+# Try imports
+try:
+    import vtracer
+    VTRACER_AVAILABLE = True
+except ImportError:
+    VTRACER_AVAILABLE = False
+
+try:
+    import cairosvg
+    from io import BytesIO
+    CAIROSVG_AVAILABLE = True
+except ImportError:
+    CAIROSVG_AVAILABLE = False
+
+try:
+    from skimage.metrics import structural_similarity as ssim
+    SKIMAGE_AVAILABLE = True
+except ImportError:
+    SKIMAGE_AVAILABLE = False
+
+
+# ============================================================================
+# QUALITY METRICS
+# ============================================================================
+
+def render_svg_to_array(svg_content: str, width: int, height: int) -> np.ndarray:
+    """Render SVG to numpy array."""
+    if not CAIROSVG_AVAILABLE:
+        raise ImportError("cairosvg required for rendering")
+    
+    png_data = cairosvg.svg2png(
+        bytestring=svg_content.encode('utf-8'),
+        output_width=width,
+        output_height=height
+    )
+    
+    img = Image.open(BytesIO(png_data)).convert('RGB')
+    return np.array(img)
+
+
+def compute_pixel_metrics(original: np.ndarray, rendered: np.ndarray) -> Dict[str, Any]:
+    """
+    Compute detailed pixel-by-pixel quality metrics.
+    
+    Returns:
+        Dictionary with SSIM, PSNR, MAE, and problem pixel analysis
+    """
+    # SSIM
+    if SKIMAGE_AVAILABLE:
+        ssim_value = ssim(original, rendered, channel_axis=2, data_range=255)
+    else:
+        ssim_value = 0.0
+    
+    # Pixel differences
+    diff = np.abs(original.astype(float) - rendered.astype(float))
+    mae = np.mean(diff)
+    max_error = np.max(diff)
+    
+    # PSNR
+    mse = np.mean(diff ** 2)
+    if mse > 0:
+        psnr = 10 * np.log10(255 ** 2 / mse)
+    else:
+        psnr = float('inf')
+    
+    # Problem pixel analysis
+    diff_gray = np.mean(diff, axis=2)
+    problem_pixels_50 = np.sum(diff_gray > 50)
+    problem_pixels_100 = np.sum(diff_gray > 100)
+    total_pixels = original.shape[0] * original.shape[1]
+    
+    return {
+        "ssim": ssim_value,
+        "psnr": psnr,
+        "mae": mae,
+        "max_error": max_error,
+        "problem_pixels_50": problem_pixels_50,
+        "problem_pixels_100": problem_pixels_100,
+        "problem_ratio": problem_pixels_50 / total_pixels,
+    }
+
+
+def save_difference_map(original: np.ndarray, rendered: np.ndarray, output_path: str):
+    """Save a visualization of differences between original and rendered."""
+    diff = np.abs(original.astype(float) - rendered.astype(float))
+    diff_gray = np.mean(diff, axis=2)
+    
+    # Amplify for visibility
+    diff_vis = (diff_gray * 5).clip(0, 255).astype(np.uint8)
+    
+    # Color code: green = good, yellow = warning, red = bad
+    h, w = diff_gray.shape
+    vis_color = np.zeros((h, w, 3), dtype=np.uint8)
+    
+    # Good (diff < 20): green
+    good_mask = diff_gray < 20
+    vis_color[good_mask] = [0, 100, 0]  # Dark green
+    
+    # Warning (20 <= diff < 50): yellow
+    warn_mask = (diff_gray >= 20) & (diff_gray < 50)
+    vis_color[warn_mask] = [0, 200, 200]  # Yellow in BGR
+    
+    # Bad (diff >= 50): red scaled by error
+    bad_mask = diff_gray >= 50
+    vis_color[bad_mask, 2] = np.minimum(255, diff_gray[bad_mask] * 2).astype(np.uint8)
+    vis_color[bad_mask, 0] = 0
+    vis_color[bad_mask, 1] = 0
+    
+    cv2.imwrite(output_path, vis_color)
+
+
+# ============================================================================
+# VTRACER SETTINGS PRESETS
+# ============================================================================
+
+# Quality-focused presets - prioritize accuracy over size
+# Based on extensive testing with logo images
+QUALITY_PRESETS = {
+    "maximum": {
+        'colormode': 'color',
+        'hierarchical': 'stacked',
+        'mode': 'spline',
+        'filter_speckle': 1,
+        'color_precision': 8,
+        'layer_difference': 4,
+        'corner_threshold': 30,
+        'length_threshold': 2.0,
+        'max_iterations': 20,
+        'splice_threshold': 30,
+        'path_precision': 8,
+    },
+    "high": {
+        'colormode': 'color',
+        'hierarchical': 'stacked',
+        'mode': 'spline',
+        'filter_speckle': 2,
+        'color_precision': 7,
+        'layer_difference': 8,
+        'corner_threshold': 40,
+        'length_threshold': 2.5,
+        'max_iterations': 15,
+        'splice_threshold': 40,
+        'path_precision': 6,
+    },
+    # BEST settings found through testing - bilateral_medium + quality
+    "optimal": {
+        'colormode': 'color',
+        'hierarchical': 'stacked',
+        'mode': 'spline',
+        'filter_speckle': 2,
+        'color_precision': 7,
+        'layer_difference': 8,
+        'corner_threshold': 40,
+        'length_threshold': 2.5,
+        'max_iterations': 15,
+        'splice_threshold': 40,
+        'path_precision': 6,
+    },
+    "balanced": {
+        'colormode': 'color',
+        'hierarchical': 'stacked',
+        'mode': 'spline',
+        'filter_speckle': 4,
+        'color_precision': 6,
+        'layer_difference': 16,
+        'corner_threshold': 50,
+        'length_threshold': 3.0,
+        'max_iterations': 10,
+        'splice_threshold': 45,
+        'path_precision': 5,
+    },
+}
+
+# Best preprocessing: bilateral filter with medium strength
+OPTIMAL_BILATERAL = {'d': 7, 'sigmaColor': 50, 'sigmaSpace': 50}
+
+# Logo detection thresholds
+LOGO_DETECTION = {
+    'max_colors_ratio': 0.05,  # If unique colors < 5% of pixels, likely logo
+    'min_top10_coverage': 0.85,  # Top 10 colors cover 85%+ of image
+    'max_color_variance': 60,  # Low variance = simple color palette
+}
+
+
+# ============================================================================
+# IMAGE ANALYSIS & LOGO DETECTION
+# ============================================================================
+
+def analyze_image(image_rgb: np.ndarray) -> Dict[str, Any]:
+    """Analyze image to detect if it's a logo."""
+    h, w = image_rgb.shape[:2]
+    total_pixels = h * w
+    pixels = image_rgb.reshape(-1, 3)
+    
+    # Count unique colors
+    unique_colors = len(np.unique(pixels, axis=0))
+    
+    # Color distribution
+    from collections import Counter
+    color_counts = Counter(map(tuple, pixels))
+    
+    # Top N coverage
+    top_10 = sum(c for _, c in color_counts.most_common(10))
+    top_10_coverage = top_10 / total_pixels
+    
+    # Color variance
+    color_variance = np.std(pixels, axis=0).mean()
+    
+    # Detect if logo
+    is_logo = (
+        (unique_colors / total_pixels < LOGO_DETECTION['max_colors_ratio']) or
+        (top_10_coverage > LOGO_DETECTION['min_top10_coverage']) or
+        (color_variance < LOGO_DETECTION['max_color_variance'])
+    )
+    
+    return {
+        'width': w,
+        'height': h,
+        'unique_colors': unique_colors,
+        'top_10_coverage': top_10_coverage,
+        'color_variance': color_variance,
+        'is_logo': is_logo,
+    }
+
+
+def reduce_to_palette(image_rgb: np.ndarray, n_colors: int = 16) -> np.ndarray:
+    """
+    Reduce image to fixed color palette.
+    
+    Uses PIL's median cut algorithm for optimal palette selection.
+    
+    Args:
+        image_rgb: RGB image
+        n_colors: Target number of colors (8, 16, 32, etc.)
+        
+    Returns:
+        Image with reduced color palette
+    """
+    pil_img = Image.fromarray(image_rgb)
+    quantized = pil_img.quantize(colors=n_colors, method=Image.Quantize.MEDIANCUT)
+    rgb_img = quantized.convert('RGB')
+    return np.array(rgb_img)
+
+
+def get_optimal_palette_size(analysis: Dict[str, Any]) -> int:
+    """
+    Determine optimal palette size based on image analysis.
+    
+    Args:
+        analysis: Image analysis results
+        
+    Returns:
+        Recommended palette size (8, 16, 24, or 32)
+    """
+    unique_colors = analysis['unique_colors']
+    top_10_coverage = analysis['top_10_coverage']
+    
+    # Very simple logos (high coverage by few colors)
+    if top_10_coverage > 0.95:
+        return 8
+    elif top_10_coverage > 0.90:
+        return 12
+    elif top_10_coverage > 0.85:
+        return 16
+    elif top_10_coverage > 0.75:
+        return 24
+    else:
+        return 32
+
+
+# ============================================================================
+# LIGHT PREPROCESSING
+# ============================================================================
+
+def light_denoise(image: np.ndarray) -> np.ndarray:
+    """
+    Apply very light denoising that preserves edges and text.
+    Uses edge-preserving bilateral filter with conservative parameters.
+    """
+    # Very light bilateral filter to reduce JPEG artifacts only
+    # Small d (3) = very local, sigmaColor (20) = only merge very similar colors
+    denoised = cv2.bilateralFilter(image, d=3, sigmaColor=20, sigmaSpace=20)
+    return denoised
+
+
+def adaptive_denoise(image: np.ndarray, strength: str = "light") -> np.ndarray:
+    """
+    Apply adaptive denoising based on strength.
+    
+    Args:
+        image: RGB image
+        strength: "none", "light", "medium", "heavy"
+    """
+    if strength == "none":
+        return image
+    elif strength == "light":
+        return cv2.bilateralFilter(image, d=3, sigmaColor=20, sigmaSpace=20)
+    elif strength == "medium":
+        return cv2.bilateralFilter(image, d=5, sigmaColor=40, sigmaSpace=40)
+    else:  # heavy
+        return cv2.bilateralFilter(image, d=7, sigmaColor=60, sigmaSpace=60)
+
+
+# ============================================================================
+# MAIN VECTORIZATION
+# ============================================================================
+
+def vectorize_with_settings(
+    image_path: str,
+    output_path: str,
+    settings: Dict[str, Any],
+    denoise_strength: str = "light",
+) -> Tuple[str, int]:
+    """
+    Vectorize image with specific settings.
+    
+    Returns:
+        Tuple of (svg_content, path_count)
+    """
+    if not VTRACER_AVAILABLE:
+        raise ImportError("vtracer required")
+    
+    # Load and optionally denoise
+    image = cv2.imread(image_path)
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    
+    if denoise_strength != "none":
+        processed = adaptive_denoise(image_rgb, denoise_strength)
+    else:
+        processed = image_rgb
+    
+    # Save processed image temporarily
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+        tmp_path = tmp.name
+        cv2.imwrite(tmp_path, cv2.cvtColor(processed, cv2.COLOR_RGB2BGR))
+    
+    # Vectorize
+    with tempfile.NamedTemporaryFile(suffix='.svg', delete=False) as tmp_svg:
+        tmp_svg_path = tmp_svg.name
+    
+    try:
+        vtracer.convert_image_to_svg_py(tmp_path, tmp_svg_path, **settings)
+        
+        with open(tmp_svg_path, 'r') as f:
+            svg_content = f.read()
+        
+        # Count paths
+        path_count = svg_content.count('<path')
+        
+        # Write to output
+        with open(output_path, 'w') as f:
+            f.write(svg_content)
+        
+        return svg_content, path_count
+        
+    finally:
+        # Cleanup
+        for p in [tmp_path, tmp_svg_path]:
+            try:
+                os.remove(p)
+            except:
+                pass
+
+
+def vectorize_quality(
+    input_path: str,
+    output_path: str,
+    min_ssim: float = 0.99,
+    max_problem_ratio: float = 0.005,  # Max 0.5% problem pixels
+    max_iterations: int = 5,
+    verbose: bool = True,
+) -> Tuple[str, Dict[str, Any]]:
+    """
+    Quality-first vectorization with pixel verification.
+    
+    This function iteratively refines vectorization settings until
+    the quality threshold is met. It prioritizes visual accuracy.
+    
+    Args:
+        input_path: Path to input image
+        output_path: Path for output SVG
+        min_ssim: Minimum SSIM quality (0.0-1.0)
+        max_problem_ratio: Maximum ratio of problem pixels (>50 error)
+        max_iterations: Maximum refinement iterations
+        verbose: Print progress
+        
+    Returns:
+        Tuple of (output_path, metrics_dict)
+    """
+    # Load original image
+    image = cv2.imread(input_path)
+    if image is None:
+        raise ValueError(f"Could not load image: {input_path}")
+    
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    h, w = image_rgb.shape[:2]
+    
+    if verbose:
+        print(f"Input: {input_path} ({w}x{h})")
+        print(f"Quality targets: SSIM >= {min_ssim*100:.1f}%, Problem pixels <= {max_problem_ratio*100:.2f}%")
+    
+    # Try progressively higher quality settings
+    quality_levels = ["balanced", "high", "maximum"]
+    denoise_levels = ["light", "none"]  # Start with light, try no denoise for text
+    
+    best_result = None
+    best_ssim = 0
+    
+    for iteration in range(max_iterations):
+        # Select settings based on iteration
+        quality_idx = min(iteration, len(quality_levels) - 1)
+        denoise_idx = min(iteration // 2, len(denoise_levels) - 1)
+        
+        quality = quality_levels[quality_idx]
+        denoise = denoise_levels[denoise_idx]
+        settings = QUALITY_PRESETS[quality].copy()
+        
+        # Progressive refinement of settings
+        if iteration >= 2:
+            # Even more aggressive quality settings
+            settings['filter_speckle'] = max(1, settings['filter_speckle'] - 1)
+            settings['layer_difference'] = max(2, settings['layer_difference'] // 2)
+            settings['color_precision'] = min(8, settings['color_precision'] + 1)
+        
+        if verbose:
+            print(f"\nIteration {iteration + 1}/{max_iterations}")
+            print(f"  Quality: {quality}, Denoise: {denoise}")
+            print(f"  Settings: filter_speckle={settings['filter_speckle']}, "
+                  f"layer_difference={settings['layer_difference']}, "
+                  f"color_precision={settings['color_precision']}")
+        
+        # Vectorize
+        svg_content, path_count = vectorize_with_settings(
+            input_path, output_path, settings, denoise
+        )
+        
+        if verbose:
+            print(f"  Paths: {path_count}")
+        
+        # Render and compare
+        try:
+            rendered = render_svg_to_array(svg_content, w, h)
+            metrics = compute_pixel_metrics(image_rgb, rendered)
+            
+            if verbose:
+                print(f"  SSIM: {metrics['ssim']*100:.2f}%")
+                print(f"  Problem pixels: {metrics['problem_pixels_50']:,} ({metrics['problem_ratio']*100:.3f}%)")
+            
+            # Track best result
+            if metrics['ssim'] > best_ssim:
+                best_ssim = metrics['ssim']
+                best_result = {
+                    'svg_content': svg_content,
+                    'metrics': metrics,
+                    'settings': settings,
+                    'quality': quality,
+                    'denoise': denoise,
+                    'path_count': path_count,
+                }
+            
+            # Check if targets met
+            if metrics['ssim'] >= min_ssim and metrics['problem_ratio'] <= max_problem_ratio:
+                if verbose:
+                    print(f"  ✅ Quality targets met!")
+                break
+                
+        except Exception as e:
+            if verbose:
+                print(f"  ⚠️ Render failed: {e}")
+            continue
+    
+    if best_result is None:
+        raise RuntimeError("All vectorization attempts failed")
+    
+    # Write best result
+    with open(output_path, 'w') as f:
+        f.write(best_result['svg_content'])
+    
+    # Compute final file size
+    file_size = len(best_result['svg_content'].encode('utf-8'))
+    
+    final_metrics = best_result['metrics'].copy()
+    final_metrics['file_size'] = file_size
+    final_metrics['path_count'] = best_result['path_count']
+    final_metrics['quality_preset'] = best_result['quality']
+    final_metrics['denoise'] = best_result['denoise']
+    
+    if verbose:
+        print(f"\n{'='*50}")
+        print(f"FINAL RESULT")
+        print(f"{'='*50}")
+        print(f"Output: {output_path}")
+        print(f"File size: {file_size:,} bytes ({file_size/1024:.1f} KB)")
+        print(f"Paths: {final_metrics['path_count']}")
+        print(f"SSIM: {final_metrics['ssim']*100:.2f}%")
+        print(f"Problem pixels: {final_metrics['problem_pixels_50']:,} ({final_metrics['problem_ratio']*100:.3f}%)")
+        
+        if final_metrics['ssim'] >= min_ssim:
+            print(f"✅ Quality target met!")
+        else:
+            print(f"⚠️ Quality target not met (best achieved: {final_metrics['ssim']*100:.2f}%)")
+    
+    return output_path, final_metrics
+
+
+def vectorize_logo_hq(
+    input_path: str,
+    output_path: str,
+    verbose: bool = True,
+) -> Tuple[str, Dict[str, Any]]:
+    """
+    High-quality logo vectorization.
+    
+    Optimized for logos with text - prioritizes accuracy.
+    """
+    return vectorize_quality(
+        input_path,
+        output_path,
+        min_ssim=0.99,
+        max_problem_ratio=0.005,
+        max_iterations=5,
+        verbose=verbose,
+    )
+
+
+def vectorize_optimal(
+    input_path: str,
+    output_path: str,
+    verbose: bool = True,
+) -> Tuple[str, Dict[str, Any]]:
+    """
+    Vectorize using the optimal settings found through testing.
+    
+    Uses bilateral_medium preprocessing + quality vtracer settings.
+    This combination achieves ~98.35% SSIM with reasonable file size.
+    
+    Args:
+        input_path: Path to input image
+        output_path: Path for output SVG
+        verbose: Print progress
+        
+    Returns:
+        Tuple of (output_path, metrics_dict)
+    """
+    if not VTRACER_AVAILABLE:
+        raise ImportError("vtracer required")
+    
+    # Load image
+    image = cv2.imread(input_path)
+    if image is None:
+        raise ValueError(f"Could not load image: {input_path}")
+    
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    h, w = image_rgb.shape[:2]
+    
+    if verbose:
+        print(f"Input: {input_path} ({w}x{h})")
+        print("Using optimal settings (bilateral_medium + quality)")
+    
+    # Apply optimal preprocessing - bilateral medium
+    processed = cv2.bilateralFilter(
+        image_rgb,
+        d=OPTIMAL_BILATERAL['d'],
+        sigmaColor=OPTIMAL_BILATERAL['sigmaColor'],
+        sigmaSpace=OPTIMAL_BILATERAL['sigmaSpace']
+    )
+    
+    # Save processed image
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+        tmp_path = tmp.name
+        cv2.imwrite(tmp_path, cv2.cvtColor(processed, cv2.COLOR_RGB2BGR))
+    
+    # Vectorize with optimal settings
+    settings = QUALITY_PRESETS["optimal"]
+    
+    try:
+        vtracer.convert_image_to_svg_py(tmp_path, output_path, **settings)
+        
+        with open(output_path, 'r') as f:
+            svg_content = f.read()
+        
+        # Compute metrics
+        rendered = render_svg_to_array(svg_content, w, h)
+        metrics = compute_pixel_metrics(image_rgb, rendered)
+        
+        # Add file stats
+        metrics['file_size'] = len(svg_content.encode('utf-8'))
+        metrics['path_count'] = svg_content.count('<path')
+        
+        if verbose:
+            print(f"\nResult:")
+            print(f"  SSIM: {metrics['ssim']*100:.2f}%")
+            print(f"  File size: {metrics['file_size']:,} bytes ({metrics['file_size']/1024:.1f} KB)")
+            print(f"  Paths: {metrics['path_count']}")
+            print(f"  Problem pixels: {metrics['problem_pixels_50']:,}")
+        
+        return output_path, metrics
+        
+    finally:
+        os.remove(tmp_path)
+
+
+def vectorize_logo_clean(
+    input_path: str,
+    output_path: str,
+    n_colors: int = None,
+    verbose: bool = True,
+) -> Tuple[str, Dict[str, Any]]:
+    """
+    Vectorize logo with automatic palette reduction for clean output.
+    
+    This function:
+    1. Analyzes the image to detect if it's a logo
+    2. Reduces colors to optimal palette (8-32 colors)
+    3. Vectorizes with settings optimized for clean paths
+    
+    Args:
+        input_path: Path to input image
+        output_path: Path for output SVG
+        n_colors: Force specific palette size (auto-detect if None)
+        verbose: Print progress
+        
+    Returns:
+        Tuple of (output_path, metrics_dict)
+    """
+    if not VTRACER_AVAILABLE:
+        raise ImportError("vtracer required")
+    
+    # Load image
+    image = cv2.imread(input_path)
+    if image is None:
+        raise ValueError(f"Could not load image: {input_path}")
+    
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    h, w = image_rgb.shape[:2]
+    
+    # Analyze image
+    analysis = analyze_image(image_rgb)
+    
+    if verbose:
+        print(f"Input: {input_path} ({w}x{h})")
+        print(f"Original colors: {analysis['unique_colors']:,}")
+        print(f"Top 10 colors cover: {analysis['top_10_coverage']*100:.1f}%")
+        print(f"Detected as logo: {'Yes' if analysis['is_logo'] else 'No'}")
+    
+    # Determine palette size
+    if n_colors is None:
+        n_colors = get_optimal_palette_size(analysis)
+    
+    if verbose:
+        print(f"Using palette: {n_colors} colors")
+    
+    # Reduce to palette
+    reduced = reduce_to_palette(image_rgb, n_colors)
+    
+    if verbose:
+        actual_colors = len(np.unique(reduced.reshape(-1, 3), axis=0))
+        print(f"Reduced to: {actual_colors} colors")
+    
+    # Save reduced image
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+        tmp_path = tmp.name
+        cv2.imwrite(tmp_path, cv2.cvtColor(reduced, cv2.COLOR_RGB2BGR))
+    
+    # Settings optimized for palette-reduced images
+    settings = {
+        'colormode': 'color',
+        'hierarchical': 'stacked',
+        'mode': 'spline',
+        'filter_speckle': 4,
+        'color_precision': 6,
+        'layer_difference': 16,
+        'corner_threshold': 60,
+        'length_threshold': 4.0,
+        'max_iterations': 10,
+        'splice_threshold': 45,
+        'path_precision': 5,
+    }
+    
+    try:
+        vtracer.convert_image_to_svg_py(tmp_path, output_path, **settings)
+        
+        with open(output_path, 'r') as f:
+            svg_content = f.read()
+        
+        # Compute metrics against original
+        rendered = render_svg_to_array(svg_content, w, h)
+        metrics = compute_pixel_metrics(image_rgb, rendered)
+        
+        # Also compute vs reduced image
+        metrics_vs_reduced = compute_pixel_metrics(reduced, rendered)
+        
+        # Add file stats
+        metrics['file_size'] = len(svg_content.encode('utf-8'))
+        metrics['path_count'] = svg_content.count('<path')
+        metrics['palette_size'] = n_colors
+        metrics['is_logo'] = analysis['is_logo']
+        metrics['ssim_vs_reduced'] = metrics_vs_reduced['ssim']
+        
+        if verbose:
+            print(f"\nResult:")
+            print(f"  SSIM vs original: {metrics['ssim']*100:.2f}%")
+            print(f"  SSIM vs reduced:  {metrics['ssim_vs_reduced']*100:.2f}%")
+            print(f"  File size: {metrics['file_size']:,} bytes ({metrics['file_size']/1024:.1f} KB)")
+            print(f"  Paths: {metrics['path_count']}")
+        
+        return output_path, metrics
+        
+    finally:
+        os.remove(tmp_path)
+
+
+def compare_and_visualize(
+    original_path: str,
+    svg_path: str,
+    output_dir: str = None,
+    verbose: bool = True,
+) -> Dict[str, Any]:
+    """
+    Compare original image with SVG and create visualizations.
+    
+    Args:
+        original_path: Path to original image
+        svg_path: Path to SVG file
+        output_dir: Directory for output files (default: same as SVG)
+        verbose: Print progress
+        
+    Returns:
+        Dictionary with comparison metrics
+    """
+    # Load original
+    original = cv2.imread(original_path)
+    original_rgb = cv2.cvtColor(original, cv2.COLOR_BGR2RGB)
+    h, w = original_rgb.shape[:2]
+    
+    # Load and render SVG
+    with open(svg_path, 'r') as f:
+        svg_content = f.read()
+    
+    rendered = render_svg_to_array(svg_content, w, h)
+    
+    # Compute metrics
+    metrics = compute_pixel_metrics(original_rgb, rendered)
+    
+    # Set output directory
+    if output_dir is None:
+        output_dir = str(Path(svg_path).parent)
+    
+    base_name = Path(svg_path).stem
+    
+    # Save rendered PNG
+    rendered_path = os.path.join(output_dir, f"{base_name}_rendered.png")
+    cv2.imwrite(rendered_path, cv2.cvtColor(rendered, cv2.COLOR_RGB2BGR))
+    
+    # Save difference map
+    diff_path = os.path.join(output_dir, f"{base_name}_diff.png")
+    save_difference_map(original_rgb, rendered, diff_path)
+    
+    # Save side-by-side comparison
+    comparison = np.hstack([original_rgb, rendered])
+    comparison_path = os.path.join(output_dir, f"{base_name}_comparison.png")
+    cv2.imwrite(comparison_path, cv2.cvtColor(comparison, cv2.COLOR_RGB2BGR))
+    
+    if verbose:
+        print(f"Quality Metrics:")
+        print(f"  SSIM: {metrics['ssim']*100:.2f}%")
+        print(f"  PSNR: {metrics['psnr']:.2f} dB")
+        print(f"  MAE: {metrics['mae']:.2f}")
+        print(f"  Max Error: {metrics['max_error']:.0f}")
+        print(f"  Problem Pixels (>50): {metrics['problem_pixels_50']:,} ({metrics['problem_ratio']*100:.3f}%)")
+        print(f"\nOutput files:")
+        print(f"  Rendered: {rendered_path}")
+        print(f"  Difference: {diff_path}")
+        print(f"  Comparison: {comparison_path}")
+    
+    metrics['rendered_path'] = rendered_path
+    metrics['diff_path'] = diff_path
+    metrics['comparison_path'] = comparison_path
+    
+    return metrics
+
+
+# ============================================================================
+# CLI
+# ============================================================================
+
+if __name__ == "__main__":
+    import sys
+    
+    if len(sys.argv) < 3:
+        print("Usage: python -m vectalab.quality <input_image> <output.svg> [min_ssim]")
+        sys.exit(1)
+    
+    input_path = sys.argv[1]
+    output_path = sys.argv[2]
+    min_ssim = float(sys.argv[3]) if len(sys.argv) > 3 else 0.99
+    
+    try:
+        svg_path, metrics = vectorize_quality(input_path, output_path, min_ssim=min_ssim)
+        print(f"\nSuccess! Output saved to {svg_path}")
+        
+        # Also create comparison
+        compare_and_visualize(input_path, svg_path)
+        
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

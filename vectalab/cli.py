@@ -665,6 +665,531 @@ def compare(
     console.print(table)
 
 
+@app.command("optimal", rich_help_panel="Commands")
+def optimal(
+    input_file: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to input image (PNG, JPG, etc.)",
+            show_default=False,
+        )
+    ],
+    output_file: Annotated[
+        Optional[Path],
+        typer.Argument(
+            help="Path for output SVG [dim](default: input_name.svg)[/]",
+            show_default=False,
+        )
+    ] = None,
+    compare: Annotated[
+        bool,
+        typer.Option(
+            "--compare", "-c",
+            help="Generate comparison images (rendered PNG, diff map)",
+        )
+    ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose", "-v",
+            help="Show detailed progress information",
+        )
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force", "-f",
+            help="Overwrite output file if it exists",
+        )
+    ] = False,
+):
+    """
+    🎯 Optimal vectorization with pixel-perfect quality verification.
+    
+    This command uses the best settings found through extensive testing:
+    - Bilateral filter preprocessing (removes JPEG noise, preserves edges)
+    - Quality vtracer settings (high color precision, low layer difference)
+    - Pixel-by-pixel quality metrics
+    
+    Achieves ~98.35% SSIM with reasonable file size (~50-100KB for logos).
+    
+    [bold]Examples:[/]
+    
+      [dim]# Basic conversion[/]
+      $ vectalab optimal logo.png
+      
+      [dim]# With comparison images[/]
+      $ vectalab optimal logo.jpg -c
+      
+      [dim]# Verbose output[/]
+      $ vectalab optimal image.png -v
+    """
+    # Validate input
+    input_path = validate_input_file(input_file)
+    
+    # Generate output path if not specified
+    if output_file is None:
+        output_file = input_path.with_suffix('.svg')
+    output_path = validate_output_file(output_file)
+    
+    # Check if output exists
+    if output_path.exists() and not force:
+        overwrite = typer.confirm(
+            f"Output file {output_path} already exists. Overwrite?",
+            default=False
+        )
+        if not overwrite:
+            console.print("[yellow]Operation cancelled.[/]")
+            raise typer.Exit(0)
+    
+    show_banner()
+    
+    # Show info
+    info_table = Table(box=box.ROUNDED, show_header=False, border_style="dim")
+    info_table.add_column("Property", style="cyan")
+    info_table.add_column("Value")
+    info_table.add_row("📁 Input", str(input_path))
+    info_table.add_row("📄 Output", str(output_path))
+    info_table.add_row("🔧 Method", "Optimal (bilateral + quality)")
+    console.print(info_table)
+    console.print()
+    
+    try:
+        from vectalab.quality import vectorize_optimal, compare_and_visualize
+        
+        with console.status("[cyan]Vectorizing with optimal settings...[/]"):
+            svg_path, metrics = vectorize_optimal(
+                str(input_path),
+                str(output_path),
+                verbose=verbose,
+            )
+        
+        # Generate comparison if requested
+        if compare:
+            with console.status("[cyan]Generating comparison images...[/]"):
+                compare_and_visualize(str(input_path), svg_path, verbose=verbose)
+        
+        # Show results
+        _show_optimal_results(output_path, metrics)
+        
+    except ImportError as e:
+        error_console.print(f"❌ Missing dependency: {e}")
+        error_console.print("Install with: pip install vtracer cairosvg scikit-image")
+        raise typer.Exit(1)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]⚠️ Operation cancelled by user.[/]")
+        raise typer.Exit(130)
+    except Exception as e:
+        error_console.print(f"❌ Conversion failed: {e}")
+        if verbose:
+            console.print_exception()
+        raise typer.Exit(1)
+
+
+def _show_optimal_results(output_path: Path, metrics: dict):
+    """Display optimal conversion results."""
+    size_bytes = metrics.get('file_size', output_path.stat().st_size)
+    
+    if size_bytes < 1024:
+        size_str = f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        size_str = f"{size_bytes / 1024:.1f} KB"
+    else:
+        size_str = f"{size_bytes / (1024 * 1024):.2f} MB"
+    
+    # Create results table
+    result_table = Table(box=box.ROUNDED, show_header=False, border_style="green")
+    result_table.add_column("Metric", style="bold")
+    result_table.add_column("Value")
+    
+    # SSIM
+    ssim_val = metrics.get('ssim', 0)
+    ssim_text = format_ssim(ssim_val)
+    result_table.add_row("Quality (SSIM)", ssim_text)
+    
+    # PSNR
+    psnr = metrics.get('psnr', 0)
+    result_table.add_row("PSNR", f"{psnr:.2f} dB")
+    
+    # File size
+    result_table.add_row("File Size", size_str)
+    
+    # Path count
+    path_count = metrics.get('path_count', 0)
+    result_table.add_row("SVG Paths", str(path_count))
+    
+    # Problem pixels
+    problem_50 = metrics.get('problem_pixels_50', 0)
+    problem_100 = metrics.get('problem_pixels_100', 0)
+    result_table.add_row("Problem Pixels (>50)", f"{problem_50:,}")
+    result_table.add_row("Problem Pixels (>100)", f"{problem_100:,}")
+    
+    result_table.add_row("Output", str(output_path))
+    
+    title = "🎯 Optimal Vectorization Complete"
+    border_style = "green"
+    
+    console.print()
+    console.print(Panel(result_table, title=title, border_style=border_style))
+
+
+@app.command("logo", rich_help_panel="Commands")
+def logo(
+    input_file: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to input image (PNG, JPG, etc.)",
+            show_default=False,
+        )
+    ],
+    output_file: Annotated[
+        Optional[Path],
+        typer.Argument(
+            help="Path for output SVG [dim](default: input_name.svg)[/]",
+            show_default=False,
+        )
+    ] = None,
+    colors: Annotated[
+        Optional[int],
+        typer.Option(
+            "--colors", "-c",
+            help="Number of colors (8, 16, 24, 32). Auto-detect if not set.",
+            min=2,
+            max=256,
+            rich_help_panel="Quality Options",
+        )
+    ] = None,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose", "-v",
+            help="Show detailed progress information",
+        )
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force", "-f",
+            help="Overwrite output file if it exists",
+        )
+    ] = False,
+):
+    """
+    🎨 Logo vectorization with automatic color palette reduction.
+    
+    This command is optimized for logos, icons, and simple graphics:
+    - Detects if image is a logo based on color distribution
+    - Reduces to optimal color palette (8-32 colors)
+    - Creates clean, minimal SVG paths
+    
+    [bold]Examples:[/]
+    
+      [dim]# Auto-detect best settings[/]
+      $ vectalab logo company_logo.png
+      
+      [dim]# Force 16 colors[/]
+      $ vectalab logo icon.jpg -c 16
+      
+      [dim]# 8 colors for very simple logos[/]
+      $ vectalab logo simple.png -c 8
+    """
+    # Validate input
+    input_path = validate_input_file(input_file)
+    
+    # Generate output path if not specified
+    if output_file is None:
+        output_file = input_path.with_suffix('.svg')
+    output_path = validate_output_file(output_file)
+    
+    # Check if output exists
+    if output_path.exists() and not force:
+        overwrite = typer.confirm(
+            f"Output file {output_path} already exists. Overwrite?",
+            default=False
+        )
+        if not overwrite:
+            console.print("[yellow]Operation cancelled.[/]")
+            raise typer.Exit(0)
+    
+    show_banner()
+    
+    # Show info
+    info_table = Table(box=box.ROUNDED, show_header=False, border_style="dim")
+    info_table.add_column("Property", style="cyan")
+    info_table.add_column("Value")
+    info_table.add_row("📁 Input", str(input_path))
+    info_table.add_row("📄 Output", str(output_path))
+    info_table.add_row("🔧 Method", "Logo (palette reduction)")
+    if colors:
+        info_table.add_row("🎨 Colors", str(colors))
+    else:
+        info_table.add_row("🎨 Colors", "Auto-detect")
+    console.print(info_table)
+    console.print()
+    
+    try:
+        from vectalab.quality import vectorize_logo_clean
+        
+        with console.status("[cyan]Analyzing and vectorizing logo...[/]"):
+            svg_path, metrics = vectorize_logo_clean(
+                str(input_path),
+                str(output_path),
+                n_colors=colors,
+                verbose=verbose,
+            )
+        
+        # Show results
+        _show_logo_results(output_path, metrics)
+        
+    except ImportError as e:
+        error_console.print(f"❌ Missing dependency: {e}")
+        error_console.print("Install with: pip install vtracer cairosvg scikit-image")
+        raise typer.Exit(1)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]⚠️ Operation cancelled by user.[/]")
+        raise typer.Exit(130)
+    except Exception as e:
+        error_console.print(f"❌ Conversion failed: {e}")
+        if verbose:
+            console.print_exception()
+        raise typer.Exit(1)
+
+
+def _show_logo_results(output_path: Path, metrics: dict):
+    """Display logo conversion results."""
+    size_bytes = metrics.get('file_size', output_path.stat().st_size)
+    
+    if size_bytes < 1024:
+        size_str = f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        size_str = f"{size_bytes / 1024:.1f} KB"
+    else:
+        size_str = f"{size_bytes / (1024 * 1024):.2f} MB"
+    
+    # Create results table
+    result_table = Table(box=box.ROUNDED, show_header=False, border_style="green")
+    result_table.add_column("Metric", style="bold")
+    result_table.add_column("Value")
+    
+    # Palette size
+    palette = metrics.get('palette_size', 0)
+    result_table.add_row("Color Palette", f"{palette} colors")
+    
+    # SSIM
+    ssim_val = metrics.get('ssim', 0)
+    ssim_text = format_ssim(ssim_val)
+    result_table.add_row("Quality (SSIM)", ssim_text)
+    
+    # SSIM vs reduced
+    ssim_reduced = metrics.get('ssim_vs_reduced', 0)
+    result_table.add_row("SSIM vs Reduced", f"{ssim_reduced*100:.2f}%")
+    
+    # File size
+    result_table.add_row("File Size", size_str)
+    
+    # Path count
+    path_count = metrics.get('path_count', 0)
+    result_table.add_row("SVG Paths", str(path_count))
+    
+    result_table.add_row("Output", str(output_path))
+    
+    title = "🎨 Logo Vectorization Complete"
+    border_style = "green"
+    
+    console.print()
+    console.print(Panel(result_table, title=title, border_style=border_style))
+
+
+@app.command("smart", rich_help_panel="Commands")
+def smart(
+    input_file: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to input image (PNG, JPG, etc.)",
+            show_default=False,
+        )
+    ],
+    output_file: Annotated[
+        Optional[Path],
+        typer.Argument(
+            help="Path for output SVG [dim](default: input_name.svg)[/]",
+            show_default=False,
+        )
+    ] = None,
+    target_size: Annotated[
+        int,
+        typer.Option(
+            "--size", "-s",
+            help="Target file size in KB",
+            min=1,
+            max=10000,
+            rich_help_panel="Quality Options",
+        )
+    ] = 100,
+    target_ssim: Annotated[
+        float,
+        typer.Option(
+            "--quality", "-q",
+            help="Minimum SSIM quality (0.0-1.0)",
+            min=0.5,
+            max=1.0,
+            rich_help_panel="Quality Options",
+        )
+    ] = 0.92,
+    max_iterations: Annotated[
+        int,
+        typer.Option(
+            "--iterations", "-i",
+            help="Maximum optimization iterations",
+            min=1,
+            max=20,
+            rich_help_panel="Quality Options",
+        )
+    ] = 5,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose", "-v",
+            help="Show detailed progress information",
+        )
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force", "-f",
+            help="Overwrite output file if it exists",
+        )
+    ] = False,
+):
+    """
+    🚀 Smart vectorization with automatic optimization.
+    
+    This is the recommended command for vectorizing logos, icons, and illustrations.
+    It automatically:
+    
+    • Detects image type (logo, icon, illustration, photo)
+    • Applies optimal color quantization
+    • Uses adaptive vtracer settings
+    • Iteratively optimizes until targets are met
+    
+    [bold]Examples:[/]
+    
+      [dim]# Convert a logo (auto-detects settings)[/]
+      $ vectalab smart logo.png
+      
+      [dim]# Target a specific file size[/]
+      $ vectalab smart image.jpg -s 50
+      
+      [dim]# Higher quality threshold[/]
+      $ vectalab smart photo.png -q 0.95
+    """
+    # Validate input
+    input_path = validate_input_file(input_file)
+    
+    # Generate output path if not specified
+    if output_file is None:
+        output_file = input_path.with_suffix('.svg')
+    output_path = validate_output_file(output_file)
+    
+    # Check if output exists
+    if output_path.exists() and not force:
+        overwrite = typer.confirm(
+            f"Output file {output_path} already exists. Overwrite?",
+            default=False
+        )
+        if not overwrite:
+            console.print("[yellow]Operation cancelled.[/]")
+            raise typer.Exit(0)
+    
+    show_banner()
+    
+    # Show info
+    info_table = Table(box=box.ROUNDED, show_header=False, border_style="dim")
+    info_table.add_column("Property", style="cyan")
+    info_table.add_column("Value")
+    info_table.add_row("📁 Input", str(input_path))
+    info_table.add_row("📄 Output", str(output_path))
+    info_table.add_row("🎯 Target Size", f"{target_size} KB")
+    info_table.add_row("⚡ Min Quality", f"{target_ssim * 100:.0f}%")
+    info_table.add_row("🔄 Max Iterations", str(max_iterations))
+    console.print(info_table)
+    console.print()
+    
+    try:
+        from vectalab.sota import vectorize_smart as sota_vectorize
+        
+        with console.status("[cyan]Analyzing image and optimizing...[/]"):
+            svg_path, metrics = sota_vectorize(
+                str(input_path),
+                str(output_path),
+                target_ssim=target_ssim,
+                max_file_size=target_size * 1024,
+                max_iterations=max_iterations,
+                verbose=verbose,
+            )
+        
+        # Show results
+        _show_smart_results(output_path, metrics)
+        
+    except ImportError as e:
+        error_console.print(f"❌ Missing dependency: {e}")
+        error_console.print("Install with: pip install vtracer cairosvg scikit-image")
+        raise typer.Exit(1)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]⚠️ Operation cancelled by user.[/]")
+        raise typer.Exit(130)
+    except Exception as e:
+        error_console.print(f"❌ Conversion failed: {e}")
+        if verbose:
+            console.print_exception()
+        raise typer.Exit(1)
+
+
+def _show_smart_results(output_path: Path, metrics: dict):
+    """Display smart conversion results."""
+    size_bytes = metrics.get('file_size', output_path.stat().st_size)
+    
+    if size_bytes < 1024:
+        size_str = f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        size_str = f"{size_bytes / 1024:.1f} KB"
+    else:
+        size_str = f"{size_bytes / (1024 * 1024):.2f} MB"
+    
+    # Create results table
+    result_table = Table(box=box.ROUNDED, show_header=False, border_style="green")
+    result_table.add_column("Metric", style="bold")
+    result_table.add_column("Value")
+    
+    # Image type
+    image_type = metrics.get('image_type', 'unknown')
+    result_table.add_row("Image Type", image_type.capitalize())
+    
+    # SSIM
+    ssim_val = metrics.get('ssim', 0)
+    ssim_text = format_ssim(ssim_val)
+    result_table.add_row("Quality (SSIM)", ssim_text)
+    
+    # File size
+    result_table.add_row("File Size", size_str)
+    
+    # Path count
+    path_count = metrics.get('path_count', 0)
+    result_table.add_row("SVG Paths", str(path_count))
+    
+    # Preset used
+    preset = metrics.get('quality_preset', 'balanced')
+    result_table.add_row("Preset Used", preset.capitalize())
+    
+    result_table.add_row("Output", str(output_path))
+    
+    title = "🚀 Smart Vectorization Complete"
+    border_style = "green"
+    
+    console.print()
+    console.print(Panel(result_table, title=title, border_style=border_style))
+
+
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,

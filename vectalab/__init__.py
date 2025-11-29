@@ -26,8 +26,24 @@ from .optimize import (
     get_vtracer_preset,
     VTRACER_PRESETS,
 )
+from .sota import (
+    vectorize_smart,
+    vectorize_logo,
+    vectorize_icon,
+    ImageAnalyzer,
+)
+from .quality import (
+    vectorize_optimal,
+    vectorize_quality,
+    vectorize_logo_clean,
+    compare_and_visualize,
+    compute_pixel_metrics,
+    analyze_image,
+    reduce_to_palette,
+    QUALITY_PRESETS,
+)
 
-__version__ = "0.2.0"
+__version__ = "0.4.0"
 __author__ = "Vectalab Contributors"
 
 __all__ = [
@@ -50,4 +66,18 @@ __all__ = [
     'optimize_svg_string',
     'get_vtracer_preset',
     'VTRACER_PRESETS',
+    # SOTA (Smart vectorization)
+    'vectorize_smart',
+    'vectorize_logo',
+    'vectorize_icon',
+    'ImageAnalyzer',
+    # Quality-first vectorization
+    'vectorize_optimal',
+    'vectorize_quality',
+    'vectorize_logo_clean',
+    'compare_and_visualize',
+    'compute_pixel_metrics',
+    'analyze_image',
+    'reduce_to_palette',
+    'QUALITY_PRESETS',
 ]
