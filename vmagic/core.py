@@ -7,9 +7,14 @@ from .tracing import Tracer
 from .output import SVGWriter
 
 class VMagic:
-    def __init__(self, model_type="vit_h", checkpoint_path=None, device="cpu"):
-        self.segmenter = SAMSegmenter(model_type, checkpoint_path, device)
-        self.tracer = Tracer()
+    def __init__(self, model_type="vit_h", checkpoint_path=None, device="cpu", **kwargs):
+        # Separate arguments
+        tracing_keys = ['turdsize', 'alphamax', 'opticurve']
+        tracing_args = {k: v for k, v in kwargs.items() if k in tracing_keys}
+        segmentation_args = {k: v for k, v in kwargs.items() if k not in tracing_keys}
+        
+        self.segmenter = SAMSegmenter(model_type, checkpoint_path, device, **segmentation_args)
+        self.tracer = Tracer(**tracing_args)
         self.writer = SVGWriter()
 
     def vectorize(self, image_path, output_path):

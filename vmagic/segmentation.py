@@ -5,7 +5,7 @@ import cv2
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
 
 class SAMSegmenter:
-    def __init__(self, model_type="vit_h", checkpoint_path=None, device="cpu"):
+    def __init__(self, model_type="vit_h", checkpoint_path=None, device="cpu", **kwargs):
         self.device = device
         self.model_type = model_type
         self.checkpoint_path = checkpoint_path or self._get_default_checkpoint_path(model_type)
@@ -18,14 +18,23 @@ class SAMSegmenter:
         self.sam = sam_model_registry[model_type](checkpoint=self.checkpoint_path)
         self.sam.to(device=device)
         
+        # Default parameters
+        generator_args = {
+            "points_per_side": 32,
+            "pred_iou_thresh": 0.86,
+            "stability_score_thresh": 0.92,
+            "crop_n_layers": 1,
+            "crop_n_points_downscale_factor": 2,
+            "min_mask_region_area": 100,
+        }
+        # Update with provided kwargs
+        generator_args.update(kwargs)
+        
+        print(f"Initializing Mask Generator with args: {generator_args}")
+        
         self.mask_generator = SamAutomaticMaskGenerator(
             model=self.sam,
-            points_per_side=32,
-            pred_iou_thresh=0.86,
-            stability_score_thresh=0.92,
-            crop_n_layers=1,
-            crop_n_points_downscale_factor=2,
-            min_mask_region_area=100,
+            **generator_args
         )
 
     def _get_default_checkpoint_path(self, model_type):

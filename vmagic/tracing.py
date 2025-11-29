@@ -3,8 +3,10 @@ import potrace
 import cv2
 
 class Tracer:
-    def __init__(self):
-        pass
+    def __init__(self, turdsize=2, alphamax=1, opticurve=True, **kwargs):
+        self.turdsize = turdsize
+        self.alphamax = alphamax
+        self.opticurve = opticurve
 
     def trace(self, image, masks):
         """
@@ -32,7 +34,11 @@ class Tracer:
             
             # Trace
             bmp = potrace.Bitmap(bitmap_data)
-            path = bmp.trace()
+            path = bmp.trace(
+                turdsize=self.turdsize,
+                alphamax=self.alphamax,
+                opticurve=self.opticurve
+            )
 
             
             # Get average color of the segment
