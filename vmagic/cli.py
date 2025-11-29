@@ -7,6 +7,7 @@ def main():
     parser.add_argument("input", help="Path to input image")
     parser.add_argument("output", help="Path to output SVG")
     parser.add_argument("--model", default="vit_b", help="SAM model type (vit_h, vit_l, vit_b)")
+    parser.add_argument("--method", default="sam", choices=["sam", "bayesian"], help="Vectorization method: sam or bayesian")
     parser.add_argument("--device", default="cpu", help="Device to run SAM on (cpu, cuda, mps)")
     parser.add_argument("--points_per_side", type=int, default=32, help="Points per side for SAM grid")
     parser.add_argument("--pred_iou_thresh", type=float, default=0.86, help="IoU threshold")
@@ -29,7 +30,8 @@ def main():
             min_mask_region_area=args.min_mask_region_area,
             turdsize=args.turdsize,
             alphamax=args.alphamax,
-            opticurve=args.opticurve
+            opticurve=args.opticurve,
+            method=args.method
         )
         vm.vectorize(args.input, args.output)
     except Exception as e:

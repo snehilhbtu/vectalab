@@ -1,12 +1,46 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-venv/
-.mypy_cache/
-.pytest_cache/
-.ipynb_checkpoints/
+*.so
+*.egg
 *.egg-info/
 dist/
 build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Testing
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Model weights (large files - download separately)
+models/*.pth
+*.pth
+
+# Test outputs
+tests/output/
+*.svg
+!examples/*.svg
+
+# Temporary files
+*.tmp
+*.log
+
+# IDE
+.idea/
