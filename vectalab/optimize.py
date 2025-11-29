@@ -718,11 +718,11 @@ VTRACER_PRESETS = {
         'mode': 'polygon',
         'filter_speckle': 0,
         'color_precision': 8,
-        'layer_difference': 1,
+        'layer_difference': 0,  # Max detail (was 1)
         'corner_threshold': 10,
         'length_threshold': 3.5,
-        'max_iterations': 30,
-        'path_precision': 8,
+        'max_iterations': 50, # Increased from 30
+        'path_precision': 10, # Increased from 8
     },
 }
 

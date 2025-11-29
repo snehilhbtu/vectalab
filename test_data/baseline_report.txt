@@ -45,16 +45,16 @@ multi_spotify                      93.79%     23.66dB    279.98
 multi_trello                       98.10%     27.71dB    110.24
 multi_twitter                      92.37%     21.25dB    487.31
 multi_youtube                      97.66%     22.06dB    405.10
-complex_car                        95.63%     27.73dB    109.78
-complex_compuserver_msn_Ford_Focus     87.53%     21.36dB    475.58
-complex_gallardo                   94.77%     27.21dB    123.68
-complex_juanmontoya_lingerie       94.68%     27.40dB    118.21
-complex_rg1024_Presentation_with_girl     89.89%     22.89dB    334.49
-complex_rg1024_green_grapes        96.46%     26.82dB    135.23
-complex_rg1024_metal_effect        89.82%     23.72dB    275.86
-complex_scimitar                   93.87%     24.12dB    251.92
-complex_tiger                      95.38%     23.40dB    297.02
-complex_tommek_Car                 95.79%     26.25dB    154.03
+complex_car                        95.42%     27.73dB    109.78
+complex_compuserver_msn_Ford_Focus     86.92%     21.32dB    480.22
+complex_gallardo                   94.74%     26.95dB    131.19
+complex_juanmontoya_lingerie       94.56%     27.05dB    128.19
+complex_rg1024_Presentation_with_girl     89.88%     22.89dB    334.27
+complex_rg1024_green_grapes        96.36%     26.64dB    140.89
+complex_rg1024_metal_effect        90.08%     23.05dB    322.47
+complex_scimitar                   93.72%     23.94dB    262.28
+complex_tiger                      95.96%     24.01dB    258.43
+complex_tommek_Car                 96.03%     26.40dB    149.11
 
 ======================================================================
 
@@ -71,10 +71,10 @@ Multi-Color Summary (20 tested):
   Max SSIM:     100.00%
 
 Complex Scenes Summary (10 tested):
-  Average SSIM: 93.38%
-  Average PSNR: 25.09 dB (capped at 100)
-  Min SSIM:     87.53%
-  Max SSIM:     96.46%
+  Average SSIM: 93.37%
+  Average PSNR: 25.00 dB (capped at 100)
+  Min SSIM:     86.92%
+  Max SSIM:     96.36%
 
 Multi-Color Summary (20 tested):
   Average: 94.53%
