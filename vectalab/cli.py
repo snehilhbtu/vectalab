@@ -215,6 +215,14 @@ def convert(
             help="Overwrite output file if it exists",
         )
     ] = False,
+    use_modal: Annotated[
+        bool,
+        typer.Option(
+            "--use-modal",
+            help="Use Modal.com for remote SAM execution",
+            rich_help_panel="Performance Options",
+        )
+    ] = False,
 ):
     """
     🎨 Convert an image to high-fidelity SVG.
@@ -275,7 +283,7 @@ def convert(
             )
         else:
             _run_standard_conversion(
-                input_path, output_path, method, quality, device, verbose, quiet
+                input_path, output_path, method, quality, device, verbose, quiet, use_modal
             )
     except KeyboardInterrupt:
         console.print("\n[yellow]⚠️ Operation cancelled by user.[/]")
@@ -342,6 +350,7 @@ def _run_standard_conversion(
     device: Device,
     verbose: bool,
     quiet: bool,
+    use_modal: bool = False,
 ):
     """Run standard vectorization (SAM or Bayesian)."""
     from vectalab.core import Vectalab
@@ -362,6 +371,7 @@ def _run_standard_conversion(
             vm = Vectalab(
                 method=method.value,
                 device=resolved_device,
+                use_modal=use_modal,
             )
             progress.update(task, advance=1, description="[cyan]Segmenting...")
             
@@ -370,7 +380,7 @@ def _run_standard_conversion(
         
         console.print(f"\n✅ [bold green]Success![/] Output saved to [cyan]{output_path}[/]")
     else:
-        vm = Vectalab(method=method.value, device=resolved_device)
+        vm = Vectalab(method=method.value, device=resolved_device, use_modal=use_modal)
         vm.vectorize(str(input_path), str(output_path))
 
 

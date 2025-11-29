@@ -5,9 +5,23 @@ import cv2
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
 
 class SAMSegmenter:
-    def __init__(self, model_type="vit_h", checkpoint_path=None, device="cpu", **kwargs):
+    def __init__(self, model_type="vit_h", checkpoint_path=None, device="cpu", use_modal=False, **kwargs):
         self.device = device
         self.model_type = model_type
+        self.use_modal = use_modal
+        
+        if self.use_modal:
+            try:
+                from .modal_sam import app, ModalSAM
+                self.app = app
+                self.ModalSAM = ModalSAM
+                self.kwargs = kwargs
+                print("Initialized SAM with Modal backend.")
+                return
+            except ImportError:
+                print("Warning: Modal not found or import failed. Falling back to local execution.")
+                self.use_modal = False
+
         self.checkpoint_path = checkpoint_path or self._get_default_checkpoint_path(model_type)
         
         if not os.path.exists(self.checkpoint_path):
@@ -63,6 +77,25 @@ class SAMSegmenter:
         Returns a list of masks.
         Each mask is a dict with keys: 'segmentation', 'area', 'bbox', 'predicted_iou', 'point_coords', 'stability_score', 'crop_box'
         """
+        if self.use_modal:
+            print("Running segmentation on Modal...")
+            masks = None
+            try:
+                import pickle
+                kwargs_bytes = pickle.dumps(self.kwargs)
+                with self.app.run():
+                    # Pass kwargs as bytes
+                    model = self.ModalSAM(model_type=self.model_type, kwargs_bytes=kwargs_bytes)
+                    masks = model.generate_masks.remote(image)
+            except Exception as e:
+                print(f"Modal execution failed: {e}")
+                raise e
+            
+            if masks is None:
+                raise RuntimeError("Modal execution failed to return masks.")
+                
+            return masks
+
         masks = self.mask_generator.generate(image)
         # Sort by area (largest first) to handle layering if needed, 
         # but for vectorization, we might want smallest first to draw on top.

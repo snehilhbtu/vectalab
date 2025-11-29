@@ -14,7 +14,7 @@ from .output import SVGWriter
 
 
 class Vectalab:
-    def __init__(self, model_type="vit_h", checkpoint_path=None, device="cpu", method="sam", **kwargs):
+    def __init__(self, model_type="vit_h", checkpoint_path=None, device="cpu", method="sam", use_modal=False, **kwargs):
         self.method = method
         self.device = device
         # Separate arguments
@@ -22,7 +22,7 @@ class Vectalab:
         tracing_args = {k: v for k, v in kwargs.items() if k in tracing_keys}
         segmentation_args = {k: v for k, v in kwargs.items() if k not in tracing_keys}
         
-        self.segmenter = SAMSegmenter(model_type, checkpoint_path, device, **segmentation_args)
+        self.segmenter = SAMSegmenter(model_type, checkpoint_path, device, use_modal=use_modal, **segmentation_args)
         self.tracer = Tracer(turdsize=0, alphamax=0, **tracing_args)
         self.writer = SVGWriter()
 

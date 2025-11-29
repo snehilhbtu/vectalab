@@ -88,12 +88,22 @@ print(f"Color accuracy: ΔE={metrics['delta_e']:.2f}")
 | `--colors, -c` | auto | Palette size (4-64) |
 | `--svgo/--no-svgo` | on | SVGO optimization |
 
+## Cloud Acceleration (Modal)
+
+Vectalab supports offloading heavy segmentation tasks (SAM) to the cloud using [Modal.com](https://modal.com). This enables using the largest models (`vit_h`) on any machine.
+
+1.  **Setup**: `modal setup`
+2.  **Run**: `vectalab convert input.png --method sam --use-modal`
+
+See [Modal Setup Guide](docs/modal_setup.md) for details.
+
 ## Documentation
 
 - [CLI Reference](docs/cli.md) - Complete command guide
 - [Python API](docs/api.md) - Programmatic usage
 - [Examples](docs/examples.md) - Common workflows
 - [Algorithm](docs/algorithm.md) - Technical details
+- [Cloud Setup](docs/modal_setup.md) - Modal integration guide
 
 ## Architecture
 

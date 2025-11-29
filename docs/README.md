@@ -27,6 +27,7 @@ vectalab optimize icon.svg
 | [Python API](api.md) | Programmatic usage with Python |
 | [Examples](examples.md) | Common workflows and recipes |
 | [Algorithm](algorithm.md) | Technical deep-dive into vectorization |
+| [Cloud Setup](modal_setup.md) | Modal.com integration for cloud acceleration |
 
 ## Which Command Should I Use?
 
