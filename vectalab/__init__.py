@@ -49,8 +49,20 @@ from .premium import (
     edge_aware_denoise,
     reduce_to_clean_palette,
 )
+from .optimizations import (
+    apply_all_optimizations,
+    optimize_with_svgo,
+    reduce_coordinate_precision,
+    compute_enhanced_quality_metrics,
+    compute_lab_ssim,
+    compute_delta_e,
+    detect_circles,
+    detect_rectangles,
+    detect_ellipses,
+    check_svgo_available,
+)
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __author__ = "Vectalab Contributors"
 
 __all__ = [
@@ -93,4 +105,15 @@ __all__ = [
     'vectorize_photo_premium',
     'edge_aware_denoise',
     'reduce_to_clean_palette',
+    # 80/20 Optimizations
+    'apply_all_optimizations',
+    'optimize_with_svgo',
+    'reduce_coordinate_precision',
+    'compute_enhanced_quality_metrics',
+    'compute_lab_ssim',
+    'compute_delta_e',
+    'detect_circles',
+    'detect_rectangles',
+    'detect_ellipses',
+    'check_svgo_available',
 ]

@@ -1000,6 +1000,158 @@ def _show_logo_results(output_path: Path, metrics: dict):
     console.print(Panel(result_table, title=title, border_style=border_style))
 
 
+@app.command("optimize", rich_help_panel="Commands")
+def optimize_svg(
+    input_file: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to input SVG file",
+            show_default=False,
+        )
+    ],
+    output_file: Annotated[
+        Optional[Path],
+        typer.Argument(
+            help="Path for output SVG [dim](default: overwrite input)[/]",
+            show_default=False,
+        )
+    ] = None,
+    precision: Annotated[
+        int,
+        typer.Option(
+            "--precision", "-p",
+            help="Coordinate precision (1-8, lower = smaller files)",
+            min=1,
+            max=8,
+            rich_help_panel="Optimization Options",
+        )
+    ] = 2,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force", "-f",
+            help="Overwrite output file without confirmation",
+        )
+    ] = False,
+):
+    """
+    🔧 Optimize existing SVG files with SVGO.
+    
+    Use this command to compress SVG files you already have.
+    Typically achieves 30-50% file size reduction while preserving quality.
+    
+    [bold cyan]When to use this vs 'premium':[/]
+    • [bold]optimize[/]: You already have an SVG file to compress
+    • [bold]premium[/]: You have a raster image (PNG/JPG) to convert to SVG
+    
+    [bold]Examples:[/]
+    
+      [dim]# Optimize SVG in-place[/]
+      $ vectalab optimize icon.svg
+      
+      [dim]# Optimize to new file[/]
+      $ vectalab optimize icon.svg icon_optimized.svg
+      
+      [dim]# Maximum compression[/]
+      $ vectalab optimize icon.svg -p 1
+    """
+    # Validate input
+    input_path = Path(input_file)
+    if not input_path.exists():
+        error_console.print(f"❌ Input file not found: [yellow]{input_path}[/]")
+        raise typer.Exit(1)
+    
+    if input_path.suffix.lower() != '.svg':
+        error_console.print(f"❌ Not an SVG file: [yellow]{input_path}[/]")
+        error_console.print("   Use 'vectalab premium' for raster images (PNG, JPG)")
+        raise typer.Exit(1)
+    
+    # Set output path
+    if output_file is None:
+        output_path = input_path
+        overwrite_self = True
+    else:
+        output_path = Path(output_file)
+        overwrite_self = False
+    
+    # Confirm overwrite
+    if output_path.exists() and not force:
+        if overwrite_self:
+            msg = f"Optimize {input_path} in place?"
+        else:
+            msg = f"Output file {output_path} exists. Overwrite?"
+        if not typer.confirm(msg, default=True):
+            console.print("[yellow]Operation cancelled.[/]")
+            raise typer.Exit(0)
+    
+    show_banner()
+    
+    # Read input
+    with open(input_path, 'r') as f:
+        original_svg = f.read()
+    
+    original_size = len(original_svg.encode('utf-8'))
+    
+    # Show info
+    info_table = Table(box=box.ROUNDED, show_header=False, border_style="dim")
+    info_table.add_column("Property", style="cyan")
+    info_table.add_column("Value")
+    info_table.add_row("📁 Input", str(input_path))
+    info_table.add_row("📄 Output", str(output_path))
+    info_table.add_row("📐 Precision", str(precision))
+    info_table.add_row("📊 Original Size", f"{original_size:,} bytes")
+    console.print(info_table)
+    console.print()
+    
+    try:
+        from vectalab.optimizations import optimize_with_svgo, check_svgo_available
+        
+        if not check_svgo_available():
+            console.print(Panel(
+                "[yellow]⚠️ SVGO not installed[/]\n\n"
+                "[bold]Install SVGO:[/]\n"
+                "  [cyan]npm install -g svgo[/]\n\n"
+                "[dim]Run 'vectalab svgo-info' for detailed instructions.[/]",
+                title="💡 SVGO Required",
+                border_style="yellow",
+            ))
+            raise typer.Exit(1)
+        
+        with console.status("[cyan]Optimizing SVG with SVGO...[/]"):
+            optimized_svg, metrics = optimize_with_svgo(
+                original_svg,
+                precision=precision,
+                multipass=True,
+            )
+        
+        # Write output
+        with open(output_path, 'w') as f:
+            f.write(optimized_svg)
+        
+        # Show results
+        optimized_size = metrics.get('optimized_size', len(optimized_svg.encode('utf-8')))
+        reduction = metrics.get('reduction_percent', 0)
+        
+        result_table = Table(box=box.ROUNDED, show_header=False, border_style="green")
+        result_table.add_column("Metric", style="bold")
+        result_table.add_column("Value")
+        
+        result_table.add_row("Original Size", f"{original_size:,} bytes")
+        result_table.add_row("Optimized Size", f"{optimized_size:,} bytes")
+        result_table.add_row("Reduction", f"[green]{reduction:.1f}%[/]")
+        result_table.add_row("Output", str(output_path))
+        
+        console.print()
+        console.print(Panel(result_table, title="✨ SVG Optimization Complete", border_style="green"))
+        
+    except ImportError as e:
+        error_console.print(f"❌ Missing dependency: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        error_console.print(f"❌ Optimization failed: {e}")
+        raise typer.Exit(1)
+
+
 @app.command("premium", rich_help_panel="Commands")
 def premium(
     input_file: Annotated[
@@ -1054,6 +1206,40 @@ def premium(
             rich_help_panel="Quality Options",
         )
     ] = "auto",
+    svgo: Annotated[
+        bool,
+        typer.Option(
+            "--svgo/--no-svgo",
+            help="Apply SVGO optimization (30-50% smaller files)",
+            rich_help_panel="80/20 Optimizations",
+        )
+    ] = True,
+    precision: Annotated[
+        int,
+        typer.Option(
+            "--precision", "-p",
+            help="Coordinate precision (1-8, lower = smaller files)",
+            min=1,
+            max=8,
+            rich_help_panel="80/20 Optimizations",
+        )
+    ] = 2,
+    detect_shapes: Annotated[
+        bool,
+        typer.Option(
+            "--shapes/--no-shapes",
+            help="Detect shape primitives (circles, rectangles)",
+            rich_help_panel="80/20 Optimizations",
+        )
+    ] = False,
+    lab_metrics: Annotated[
+        bool,
+        typer.Option(
+            "--lab/--no-lab",
+            help="Use LAB color space for perceptually accurate quality metrics",
+            rich_help_panel="80/20 Optimizations",
+        )
+    ] = True,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -1070,29 +1256,35 @@ def premium(
     ] = False,
 ):
     """
-    ✨ Premium SOTA-quality vectorization.
+    ✨ Premium SOTA-quality vectorization with 80/20 optimizations.
     
     This command uses state-of-the-art techniques for the best possible output:
     
-    [bold cyan]Features:[/]
+    [bold cyan]Core Features:[/]
     • Edge-aware preprocessing - Preserves sharp edges in text/logos
     • Iterative refinement - Keeps improving until quality target met
     • Color snapping - Rounds colors to exact values (pure black/white)
     • Path merging - Combines same-color paths for smaller files
     
+    [bold magenta]80/20 Optimizations:[/]
+    • SVGO integration - 30-50% file size reduction (requires Node.js)
+    • Coordinate precision - Reduces file size by 10-15%
+    • Shape detection - Identifies circles, rectangles, ellipses
+    • LAB color metrics - Perceptually accurate quality measurement
+    
     [bold]Examples:[/]
     
-      [dim]# Auto-detect and optimize[/]
+      [dim]# Auto-detect and optimize with SVGO[/]
       $ vectalab premium logo.png
       
-      [dim]# Logo mode with 16 colors[/]
-      $ vectalab premium logo.jpg --mode logo -c 16
+      [dim]# Logo mode with shape detection[/]
+      $ vectalab premium logo.jpg --mode logo --shapes
       
-      [dim]# High quality photo conversion[/]
-      $ vectalab premium photo.jpg --mode photo -q 0.95
+      [dim]# Maximum compression (lower precision)[/]
+      $ vectalab premium image.png --precision 1
       
-      [dim]# Maximum quality with more iterations[/]
-      $ vectalab premium image.png -q 0.99 -i 8
+      [dim]# Disable SVGO if Node.js not available[/]
+      $ vectalab premium image.png --no-svgo
     """
     # Validate input
     input_path = validate_input_file(input_file)
@@ -1114,30 +1306,71 @@ def premium(
     
     show_banner()
     
+    # Check SVGO availability and show installation instructions if needed
+    svgo_available = False
+    if svgo:
+        try:
+            from vectalab.optimizations import check_svgo_available, check_node_available
+            svgo_available = check_svgo_available()
+            if not svgo_available:
+                node_available = check_node_available()
+                if not node_available:
+                    console.print(Panel(
+                        "[yellow]⚠️ SVGO optimization requires Node.js[/]\n\n"
+                        "[bold]Install Node.js:[/]\n"
+                        "  • macOS:   [cyan]brew install node[/]\n"
+                        "  • Ubuntu:  [cyan]sudo apt install nodejs npm[/]\n"
+                        "  • Windows: Download from [link=https://nodejs.org]nodejs.org[/link]\n"
+                        "  • nvm:     [cyan]nvm install --lts[/]\n\n"
+                        "[dim]Then install SVGO: [cyan]npm install -g svgo[/][/]",
+                        title="💡 Enable SVGO for 30-50% smaller files",
+                        border_style="yellow",
+                    ))
+                else:
+                    console.print(Panel(
+                        "[yellow]⚠️ SVGO not found but Node.js is available[/]\n\n"
+                        "[bold]Install SVGO globally:[/]\n"
+                        "  [cyan]npm install -g svgo[/]\n\n"
+                        "[dim]SVGO v4.0+ is recommended for best results.[/]",
+                        title="💡 Enable SVGO for 30-50% smaller files",
+                        border_style="yellow",
+                    ))
+                console.print()
+        except ImportError:
+            pass
+    
     # Show info
     info_table = Table(box=box.ROUNDED, show_header=False, border_style="dim")
     info_table.add_column("Property", style="cyan")
     info_table.add_column("Value")
     info_table.add_row("📁 Input", str(input_path))
     info_table.add_row("📄 Output", str(output_path))
-    info_table.add_row("🔧 Method", "Premium (SOTA)")
+    info_table.add_row("🔧 Method", "Premium (SOTA + 80/20)")
     info_table.add_row("🎯 Target SSIM", f"{target_ssim*100:.0f}%")
     info_table.add_row("🔄 Iterations", str(iterations))
+    info_table.add_row("📐 Precision", str(precision))
     if mode != "auto":
         info_table.add_row("📊 Mode", mode.capitalize())
     if colors:
         info_table.add_row("🎨 Colors", str(colors))
+    svgo_status = "✓" if svgo_available else ("⚠️ Not installed" if svgo else "✗")
+    info_table.add_row("🔧 SVGO", svgo_status)
+    info_table.add_row("🔬 Shapes", "✓" if detect_shapes else "✗")
+    info_table.add_row("🎨 LAB Metrics", "✓" if lab_metrics else "✗")
     console.print(info_table)
     console.print()
     
     try:
         from vectalab.premium import vectorize_premium, vectorize_logo_premium, vectorize_photo_premium
         
-        with console.status("[cyan]Applying premium vectorization...[/]"):
+        with console.status("[cyan]Applying premium vectorization with 80/20 optimizations...[/]"):
             if mode == "logo":
                 svg_path, metrics = vectorize_logo_premium(
                     str(input_path),
                     str(output_path),
+                    use_svgo=svgo,
+                    precision=precision,
+                    detect_shapes=detect_shapes,
                     verbose=verbose,
                 )
             elif mode == "photo":
@@ -1145,6 +1378,8 @@ def premium(
                     str(input_path),
                     str(output_path),
                     n_colors=colors or 32,
+                    use_svgo=svgo,
+                    precision=precision,
                     verbose=verbose,
                 )
             else:  # auto
@@ -1154,6 +1389,10 @@ def premium(
                     target_ssim=target_ssim,
                     max_iterations=iterations,
                     n_colors=colors,
+                    use_svgo=svgo,
+                    precision=precision,
+                    detect_shapes=detect_shapes,
+                    use_lab_metrics=lab_metrics,
                     verbose=verbose,
                 )
         
@@ -1175,7 +1414,7 @@ def premium(
 
 
 def _show_premium_results(output_path: Path, metrics: dict):
-    """Display premium conversion results."""
+    """Display premium conversion results with 80/20 optimization details."""
     size_bytes = metrics.get('file_size', output_path.stat().st_size)
     
     if size_bytes < 1024:
@@ -1190,16 +1429,32 @@ def _show_premium_results(output_path: Path, metrics: dict):
     result_table.add_column("Metric", style="bold")
     result_table.add_column("Value")
     
-    # SSIM
+    # SSIM RGB
     ssim_val = metrics.get('ssim', 0)
     target_ssim = metrics.get('target_ssim', 0.98)
     ssim_text = format_ssim(ssim_val)
     if ssim_val >= target_ssim:
         ssim_text += " ✅"
-    result_table.add_row("Quality (SSIM)", ssim_text)
+    result_table.add_row("Quality (SSIM RGB)", ssim_text)
+    
+    # SSIM LAB (if available)
+    ssim_lab = metrics.get('ssim_lab', 0)
+    if ssim_lab > 0:
+        result_table.add_row("Quality (SSIM LAB)", f"{ssim_lab*100:.2f}%")
+    
+    # Delta E (if available)
+    delta_e = metrics.get('delta_e', 0)
+    if delta_e > 0:
+        delta_e_quality = "Imperceptible" if delta_e < 1 else "Excellent" if delta_e < 2 else "Good" if delta_e < 5 else "Visible"
+        result_table.add_row("Color Accuracy (ΔE)", f"{delta_e:.2f} ({delta_e_quality})")
     
     # File size
     result_table.add_row("File Size", size_str)
+    
+    # Size reduction (if available)
+    size_reduction = metrics.get('size_reduction_percent', 0)
+    if size_reduction > 0:
+        result_table.add_row("Size Reduction", f"{size_reduction:.1f}%")
     
     # Path count
     path_count = metrics.get('path_count', 0)
@@ -1211,9 +1466,25 @@ def _show_premium_results(output_path: Path, metrics: dict):
     if palette and orig_colors:
         result_table.add_row("Colors", f"{orig_colors:,} → {palette}")
     
+    # Optimization details
+    opt_metrics = metrics.get('optimizations', {})
+    if opt_metrics:
+        opts_applied = opt_metrics.get('optimizations_applied', [])
+        if opts_applied:
+            result_table.add_row("Optimizations", ", ".join(opts_applied))
+        
+        # Shape detection
+        shapes = opt_metrics.get('shapes', {})
+        if shapes:
+            circles = shapes.get('circles_detected', 0)
+            rects = shapes.get('rectangles_detected', 0)
+            ellipses = shapes.get('ellipses_detected', 0)
+            if circles or rects or ellipses:
+                result_table.add_row("Shapes Detected", f"⭕ {circles} circles, ▢ {rects} rects, ⬭ {ellipses} ellipses")
+    
     result_table.add_row("Output", str(output_path))
     
-    title = "✨ Premium Vectorization Complete"
+    title = "✨ Premium Vectorization Complete (80/20 Optimized)"
     
     console.print()
     console.print(Panel(result_table, title=title, border_style="magenta"))
@@ -1434,6 +1705,9 @@ def main(
       
       [dim]# Get info about an image[/]
       $ vectalab info image.png
+      
+      [dim]# Check SVGO status[/]
+      $ vectalab svgo-info
     
     [bold]Learn More:[/]
     
@@ -1444,6 +1718,120 @@ def main(
     if ctx.invoked_subcommand is None:
         # The help will be shown automatically due to no_args_is_help=True
         pass
+
+
+@app.command("svgo-info", rich_help_panel="Utilities")
+def svgo_info():
+    """
+    📦 Check SVGO installation status and get installation instructions.
+    
+    SVGO (SVG Optimizer) is a Node.js tool that provides 30-50% additional
+    file size reduction for SVG files. It's highly recommended for the
+    'premium' command.
+    
+    [bold]Examples:[/]
+    
+      [dim]# Check if SVGO is available[/]
+      $ vectalab svgo-info
+    """
+    console.print()
+    console.print("[bold cyan]📦 SVGO (SVG Optimizer) Status[/]")
+    console.print()
+    
+    # Check Node.js
+    node_available = False
+    node_version = None
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['node', '--version'],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            node_available = True
+            node_version = result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    
+    # Check SVGO
+    svgo_available = False
+    svgo_version = None
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['svgo', '--version'],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            svgo_available = True
+            svgo_version = result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    
+    # Build status table
+    status_table = Table(box=box.ROUNDED, show_header=False, border_style="cyan")
+    status_table.add_column("Component", style="bold")
+    status_table.add_column("Status")
+    status_table.add_column("Version")
+    
+    if node_available:
+        status_table.add_row("Node.js", "[green]✓ Installed[/]", node_version or "")
+    else:
+        status_table.add_row("Node.js", "[red]✗ Not found[/]", "")
+    
+    if svgo_available:
+        status_table.add_row("SVGO", "[green]✓ Installed[/]", f"v{svgo_version}" if svgo_version else "")
+    else:
+        status_table.add_row("SVGO", "[yellow]⚠ Not installed[/]", "")
+    
+    console.print(status_table)
+    console.print()
+    
+    if svgo_available:
+        console.print(Panel(
+            "[green]✅ SVGO is ready to use![/]\n\n"
+            "The 'premium' command will automatically use SVGO\n"
+            "for 30-50% additional file size reduction.\n\n"
+            "[bold]Usage:[/]\n"
+            "  [cyan]vectalab premium image.png --svgo[/]",
+            title="🎉 All Set!",
+            border_style="green",
+        ))
+    elif node_available:
+        console.print(Panel(
+            "[bold]Install SVGO globally:[/]\n\n"
+            "  [cyan]npm install -g svgo[/]\n\n"
+            "[dim]SVGO v4.0+ is recommended for best compatibility.[/]\n\n"
+            "[bold]Verify installation:[/]\n"
+            "  [cyan]svgo --version[/]",
+            title="📥 Install SVGO",
+            border_style="yellow",
+        ))
+    else:
+        console.print(Panel(
+            "[bold]Step 1: Install Node.js[/]\n\n"
+            "  • [bold]macOS (Homebrew):[/]\n"
+            "    [cyan]brew install node[/]\n\n"
+            "  • [bold]macOS/Linux (nvm - recommended):[/]\n"
+            "    [cyan]curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash[/]\n"
+            "    [cyan]nvm install --lts[/]\n\n"
+            "  • [bold]Ubuntu/Debian:[/]\n"
+            "    [cyan]sudo apt update && sudo apt install nodejs npm[/]\n\n"
+            "  • [bold]Windows:[/]\n"
+            "    Download from [link=https://nodejs.org]https://nodejs.org[/link]\n\n"
+            "[bold]Step 2: Install SVGO[/]\n\n"
+            "  [cyan]npm install -g svgo[/]\n\n"
+            "[bold]Step 3: Verify[/]\n\n"
+            "  [cyan]svgo --version[/]",
+            title="📥 Installation Instructions",
+            border_style="yellow",
+        ))
+    
+    console.print()
 
 
 # Convenience alias for the main convert command
@@ -1476,5 +1864,3 @@ def run():
 
 if __name__ == "__main__":
     app()
-
-
