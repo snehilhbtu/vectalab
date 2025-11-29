@@ -154,16 +154,7 @@ class TestSVGOptimization:
         optimizer = create_figma_optimizer()
         assert optimizer is not None
     
-    def test_path_simplification(self):
-        """Test path simplification function."""
-        from vectalab.optimize import rdp_simplify
-        
-        # Create a simple path with redundant points
-        points = [(0, 0), (1, 0.01), (2, 0), (3, 0.01), (4, 0)]
-        simplified = rdp_simplify(points, epsilon=0.1)
-        
-        # Should reduce to just start and end
-        assert len(simplified) <= len(points)
+    # Path simplification test removed as rdp_simplify was removed
     
     def test_color_optimization(self):
         """Test color optimization."""

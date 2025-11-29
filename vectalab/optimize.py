@@ -36,129 +36,8 @@ except ImportError:
 # PATH SIMPLIFICATION
 # ============================================================================
 
-def rdp_simplify(points: List[Tuple[float, float]], epsilon: float) -> List[Tuple[float, float]]:
-    """
-    Ramer-Douglas-Peucker algorithm for path simplification.
-    
-    Reduces the number of points in a curve while preserving the shape.
-    
-    Args:
-        points: List of (x, y) coordinate tuples
-        epsilon: Maximum distance threshold for point removal
-        
-    Returns:
-        Simplified list of points
-    """
-    if len(points) < 3:
-        return points
-    
-    # Find the point with maximum distance from line between start and end
-    start, end = points[0], points[-1]
-    max_dist = 0
-    max_idx = 0
-    
-    for i in range(1, len(points) - 1):
-        dist = perpendicular_distance(points[i], start, end)
-        if dist > max_dist:
-            max_dist = dist
-            max_idx = i
-    
-    # If max distance is greater than epsilon, recursively simplify
-    if max_dist > epsilon:
-        left = rdp_simplify(points[:max_idx + 1], epsilon)
-        right = rdp_simplify(points[max_idx:], epsilon)
-        return left[:-1] + right
-    else:
-        return [start, end]
-
-
-def perpendicular_distance(point: Tuple[float, float], 
-                           line_start: Tuple[float, float], 
-                           line_end: Tuple[float, float]) -> float:
-    """Calculate perpendicular distance from point to line."""
-    x, y = point
-    x1, y1 = line_start
-    x2, y2 = line_end
-    
-    dx = x2 - x1
-    dy = y2 - y1
-    
-    if dx == 0 and dy == 0:
-        return math.sqrt((x - x1) ** 2 + (y - y1) ** 2)
-    
-    t = ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy)
-    t = max(0, min(1, t))
-    
-    proj_x = x1 + t * dx
-    proj_y = y1 + t * dy
-    
-    return math.sqrt((x - proj_x) ** 2 + (y - proj_y) ** 2)
-
-
-def simplify_svg_path(path_data: str, epsilon: float = 1.0) -> str:
-    """
-    Simplify an SVG path d attribute using RDP algorithm.
-    
-    Args:
-        path_data: SVG path d attribute string
-        epsilon: Simplification tolerance
-        
-    Returns:
-        Simplified path d attribute
-    """
-    # Parse path into segments
-    segments = parse_path_data(path_data)
-    
-    if not segments:
-        return path_data
-    
-    # Extract all points
-    points = []
-    current = (0, 0)
-    
-    for cmd, args in segments:
-        if cmd in 'Mm':
-            if cmd == 'M':
-                current = (args[0], args[1])
-            else:
-                current = (current[0] + args[0], current[1] + args[1])
-            points.append(current)
-        elif cmd in 'Ll':
-            if cmd == 'L':
-                current = (args[0], args[1])
-            else:
-                current = (current[0] + args[0], current[1] + args[1])
-            points.append(current)
-        elif cmd in 'Cc':
-            # For curves, just add the end point
-            if cmd == 'C':
-                current = (args[4], args[5])
-            else:
-                current = (current[0] + args[4], current[1] + args[5])
-            points.append(current)
-        elif cmd in 'Zz':
-            pass  # Close path
-    
-    if len(points) < 3:
-        return path_data
-    
-    # Simplify points
-    simplified = rdp_simplify(points, epsilon)
-    
-    # Rebuild path (simplified version - lines only)
-    if len(simplified) < 2:
-        return path_data
-    
-    d = f"M{simplified[0][0]:.2f},{simplified[0][1]:.2f}"
-    for p in simplified[1:]:
-        d += f"L{p[0]:.2f},{p[1]:.2f}"
-    
-    # Check if original path was closed
-    if path_data.upper().endswith('Z'):
-        d += "Z"
-    
-    return d
-
+# RDP simplification removed as it degrades quality of vtracer output.
+# vtracer handles simplification internally via path_precision and other settings.
 
 def parse_path_data(d: str) -> List[Tuple[str, List[float]]]:
     """
@@ -442,7 +321,6 @@ class SVGOptimizer:
     Comprehensive SVG optimizer for creating lightweight, Figma-compatible files.
     
     Features:
-    - Path simplification using RDP algorithm
     - Shape primitive detection (circles, ellipses, rectangles)
     - Attribute cleanup and optimization
     - Color optimization
@@ -450,31 +328,25 @@ class SVGOptimizer:
     """
     
     def __init__(self, 
-                 simplify_paths: bool = True,
                  detect_primitives: bool = True,
                  merge_colors: bool = True,
                  use_scour: bool = True,
                  path_precision: int = 2,
-                 simplify_epsilon: float = 1.0,
                  primitive_tolerance: float = 0.1):
         """
         Initialize the optimizer.
         
         Args:
-            simplify_paths: Enable path simplification
             detect_primitives: Enable shape primitive detection
             merge_colors: Merge paths with identical colors
             use_scour: Use scour for final optimization (if available)
             path_precision: Decimal precision for path coordinates
-            simplify_epsilon: RDP simplification tolerance
             primitive_tolerance: Tolerance for primitive detection
         """
-        self.simplify_paths = simplify_paths
         self.detect_primitives = detect_primitives
         self.merge_colors = merge_colors
         self.use_scour = use_scour and SCOUR_AVAILABLE
         self.path_precision = path_precision
-        self.simplify_epsilon = simplify_epsilon
         self.primitive_tolerance = primitive_tolerance
     
     def optimize(self, input_path: str, output_path: Optional[str] = None) -> str:
@@ -585,10 +457,6 @@ class SVGOptimizer:
                 path_element.set('_primitive_type', elem_type)
                 path_element.set('_primitive_attrs', str(attrs))
                 return
-        
-        # Simplify path if needed
-        if self.simplify_paths:
-            d = simplify_svg_path(d, self.simplify_epsilon)
         
         # Round coordinates
         d = self._round_path_coords(d)
@@ -772,12 +640,10 @@ def create_figma_optimizer() -> SVGOptimizer:
         SVGOptimizer configured for Figma
     """
     return SVGOptimizer(
-        simplify_paths=True,
         detect_primitives=True,
         merge_colors=True,
         use_scour=True,
         path_precision=1,  # Aggressive rounding for Figma
-        simplify_epsilon=1.5,  # More aggressive simplification
         primitive_tolerance=0.15,  # Detect more primitives
     )
 
@@ -790,12 +656,10 @@ def create_quality_optimizer() -> SVGOptimizer:
         SVGOptimizer configured for quality
     """
     return SVGOptimizer(
-        simplify_paths=True,
         detect_primitives=True,
         merge_colors=True,
         use_scour=True,
         path_precision=2,
-        simplify_epsilon=0.5,  # Less aggressive simplification
         primitive_tolerance=0.08,  # Stricter primitive detection
     )
 

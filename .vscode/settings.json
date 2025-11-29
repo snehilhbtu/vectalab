@@ -1,5 +1,18 @@
 {
     "terminal.integrated.macOptionClickForcesSelection": true,
     "terminal.integrated.defaultProfile.osx": "zsh",
-    "terminal.integrated.accessibleViewFocusOnCommandExecution": true
+    "terminal.integrated.accessibleViewFocusOnCommandExecution": true,
+    "debug.terminal.clearBeforeReusing": true,
+    "terminal.integrated.accessibleViewPreserveCursorPosition": true,
+    "terminal.integrated.allowMnemonics": true,
+    "terminal.integrated.enableImages": true,
+    "terminal.integrated.enableVisualBell": true,
+    "terminal.integrated.fontLigatures.enabled": true,
+    "terminal.integrated.shellIntegration.enabled": true,
+    "terminal.integrated.macOptionIsMeta": true,
+    "terminal.integrated.gpuAcceleration": "auto",
+    "terminal.integrated.smoothScrolling": true,
+    "terminal.integrated.stickyScroll.enabled": true,
+    "terminal.integrated.scrollback": 10000,
+    "terminal.integrated.cursorBlinking": true
 }

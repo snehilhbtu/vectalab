@@ -6,7 +6,7 @@ lightweight, Figma-compatible SVG files while maintaining visual quality.
 
 The approach:
 1. Use vtracer with optimized presets for base vectorization
-2. Apply path simplification and shape primitive detection
+2. Apply shape primitive detection (circles, ellipses, rectangles)
 3. Optimize the SVG with scour for minimal file size
 4. Result: Clean, editable SVG files suitable for design tools
 

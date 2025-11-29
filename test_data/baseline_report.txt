@@ -1,0 +1,37 @@
+VECTALAB VECTORIZATION BASELINE REPORT
+======================================================================
+
+Individual Results:
+----------------------------------------------------------------------
+mono_camera                    SSIM: 100.00%
+mono_circle                    SSIM: 100.00%
+mono_heart                     SSIM: 100.00%
+mono_home                      SSIM: 100.00%
+mono_search                    SSIM: 100.00%
+mono_settings                  SSIM: 100.00%
+mono_square                    SSIM: 100.00%
+mono_star                      SSIM: 100.00%
+mono_triangle                  SSIM: 100.00%
+mono_user                      SSIM: 100.00%
+multi_amazon                   SSIM: 100.00%
+multi_apple                    SSIM: 100.00%
+multi_facebook                 SSIM:  95.75%
+multi_github                   SSIM:  93.79%
+multi_google                   SSIM:  91.63%
+multi_instagram                SSIM:  97.75%
+multi_linkedin                 SSIM:  98.93%
+multi_microsoft                SSIM: 100.00%
+multi_twitter                  SSIM:  92.37%
+multi_youtube                  SSIM:  97.66%
+
+======================================================================
+
+Monochrome Summary (10 tested):
+  Average: 100.00%
+  Min:     100.00%
+  Max:     100.00%
+
+Multi-Color Summary (10 tested):
+  Average: 96.79%
+  Min:     91.63%
+  Max:     100.00%
