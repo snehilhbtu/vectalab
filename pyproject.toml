@@ -48,6 +48,7 @@ dev = [
 
 [project.scripts]
 vectalab = "vectalab.cli:run"
+vectalab-benchmark = "vectalab.benchmark:main"
 
 [project.urls]
 Homepage = "https://vectalab.com"

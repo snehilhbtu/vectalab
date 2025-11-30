@@ -1,10 +1,24 @@
 #!/usr/bin/env python3
 """
-Run a full SOTA vectorization session with parallel processing.
-- Creates a timestamped session directory.
-- Runs vectalab on selected test sets in parallel.
-- Calculates comprehensive metrics.
-- Generates a visual HTML report.
+Vectalab Benchmark & SOTA Session Runner.
+
+This module provides a comprehensive benchmarking tool for the Vectalab vectorization engine.
+It allows running vectorization sessions on standard test sets or custom image directories,
+calculating detailed metrics (SSIM, Topology, Edge Accuracy, Delta E), and generating
+visual HTML reports.
+
+Usage:
+    vectalab-benchmark [OPTIONS]
+
+Examples:
+    # Run on standard test sets
+    vectalab-benchmark --sets mono multi
+
+    # Run on a custom directory of images
+    vectalab-benchmark --input-dir ./my_images --mode premium
+
+    # Run with specific quality settings
+    vectalab-benchmark --quality balanced --colors 16
 """
 
 import os
@@ -26,6 +40,14 @@ import cairosvg
 import xml.etree.ElementTree as ET
 from jinja2 import Environment, FileSystemLoader
 import concurrent.futures
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
+from rich.table import Table
+from rich.panel import Panel
+from rich import box
+
+# Initialize Rich Console
+console = Console()
 
 # --- Configuration ---
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -177,27 +199,34 @@ def create_composite_image(original_path, vectorized_path, output_path):
 def process_image(args):
     """
     Worker function to process a single image.
-    args: (filename, set_name, png_dir, svg_dir, dirs, quality, colors)
+    args: (filename, set_name, png_dir, svg_dir, dirs, quality, colors, mode)
     """
-    filename, set_name, png_dir, svg_dir, dirs, quality, colors = args
+    filename, set_name, png_dir, svg_dir, dirs, quality, colors, mode = args
     
     name = Path(filename).stem
     input_png = png_dir / filename
-    gt_svg = svg_dir / f"{name}.svg"
+    gt_svg = svg_dir / f"{name}.svg" if svg_dir else None
     
     # Copy input
     shutil.copy2(input_png, dirs["input"] / filename)
-    if gt_svg.exists():
+    if gt_svg and gt_svg.exists():
         shutil.copy2(gt_svg, dirs["ground_truth"] / f"{name}.svg")
     
     output_svg = dirs["output"] / f"{name}.svg"
     
     # Run Vectalab
-    if set_name == "complex":
-        # Use premium photo mode for complex images
+    effective_mode = mode
+    if mode == "auto":
+        if set_name == "complex":
+            effective_mode = "premium"
+        else:
+            effective_mode = "logo"
+            
+    if effective_mode == "premium":
+        # Use premium photo mode
         cmd = ["vectalab", "premium", str(input_png), str(output_svg), "--mode", "photo", "--quality", "0.95"]
     else:
-        # Use logo mode for standard sets
+        # Use logo mode
         cmd = ["vectalab", "logo", str(input_png), str(output_svg), "--quality", quality]
         
     if colors:
@@ -219,7 +248,7 @@ def process_image(args):
         
     # Reference handling
     ref_png = gt_png
-    if gt_svg.exists():
+    if gt_svg and gt_svg.exists():
         if not render_svg_to_png(gt_svg, gt_png):
             ref_png = input_png # Fallback
     else:
@@ -265,7 +294,18 @@ def process_image(args):
 
 # --- Main Session Logic ---
 
-def run_session(sets, quality="ultra", colors=None, max_workers=None):
+def run_session(sets, quality="ultra", colors=None, max_workers=None, input_dir=None, mode="auto"):
+    """
+    Run a vectorization session.
+    
+    Args:
+        sets: List of test sets to run (if input_dir is None).
+        quality: Vectalab quality preset.
+        colors: Force number of colors (optional).
+        max_workers: Number of parallel workers.
+        input_dir: Custom input directory (overrides sets).
+        mode: Vectorization mode (auto, logo, premium).
+    """
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     session_dir = TEST_RUNS_DIR / timestamp
     
@@ -280,48 +320,77 @@ def run_session(sets, quality="ultra", colors=None, max_workers=None):
     for d in dirs.values():
         d.mkdir(parents=True, exist_ok=True)
         
-    print(f"🚀 Starting SOTA Session: {timestamp}")
-    print(f"📂 Session Directory: {session_dir}")
-    print(f"⚙️  Settings: Quality={quality}, Colors={colors if colors else 'Auto'}, Workers={max_workers if max_workers else 'Auto'}")
+    console.print(Panel(f"[bold cyan]SOTA Vectorization Session[/]\n[dim]{timestamp}[/]", border_style="cyan"))
+    console.print(f"[bold]📂 Session Directory:[/] {session_dir}")
+    console.print(f"[bold]⚙️  Settings:[/] Quality=[cyan]{quality}[/], Colors=[cyan]{colors if colors else 'Auto'}[/], Workers=[cyan]{max_workers if max_workers else 'Auto'}[/], Mode=[cyan]{mode}[/]")
     
     tasks = []
-    for set_name in sets:
-        png_dir = TEST_DATA_DIR / f"png_{set_name}"
-        svg_dir = TEST_DATA_DIR / f"svg_{set_name}"
+    
+    if input_dir:
+        input_path = Path(input_dir)
+        if not input_path.exists():
+            console.print(f"[bold red]❌ Error:[/] Input directory {input_dir} does not exist.")
+            return
+            
+        console.print(f"[bold]📂 Input Directory:[/] {input_dir}")
+        png_dir = input_path
+        svg_dir = None
+        set_name = input_path.name
         
-        if not png_dir.exists():
-            print(f"⚠️  Warning: {png_dir} does not exist. Skipping.")
-            continue
+        files = sorted([f for f in os.listdir(png_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.webp'))])
+        
+        if not files:
+            console.print(f"[bold yellow]⚠️  Warning:[/] No images found in {png_dir}.")
+            return
             
-        files = sorted([f for f in os.listdir(png_dir) if f.endswith('.png')])
         for filename in files:
-            tasks.append((filename, set_name, png_dir, svg_dir, dirs, quality, colors))
+            tasks.append((filename, set_name, png_dir, svg_dir, dirs, quality, colors, mode))
             
-    print(f"📋 Found {len(tasks)} images to process.")
+    else:
+        for set_name in sets:
+            png_dir = TEST_DATA_DIR / f"png_{set_name}"
+            svg_dir = TEST_DATA_DIR / f"svg_{set_name}"
+            
+            if not png_dir.exists():
+                console.print(f"[bold yellow]⚠️  Warning:[/] {png_dir} does not exist. Skipping.")
+                continue
+                
+            files = sorted([f for f in os.listdir(png_dir) if f.endswith('.png')])
+            for filename in files:
+                tasks.append((filename, set_name, png_dir, svg_dir, dirs, quality, colors, mode))
+            
+    console.print(f"[bold]📋 Found {len(tasks)} images to process.[/]")
     
     results = []
     
-    # Parallel Processing
-    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        future_to_task = {executor.submit(process_image, task): task for task in tasks}
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        console=console
+    ) as progress:
+        task_id = progress.add_task("[cyan]Processing images...", total=len(tasks))
         
-        completed = 0
-        total = len(tasks)
-        
-        for future in concurrent.futures.as_completed(future_to_task):
-            task = future_to_task[future]
-            name = Path(task[0]).stem
-            completed += 1
+        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+            future_to_task = {executor.submit(process_image, task): task for task in tasks}
             
-            try:
-                res = future.result()
-                if "error" in res:
-                    print(f"[{completed}/{total}] ❌ {name}: {res['error']}")
-                else:
-                    print(f"[{completed}/{total}] ✅ {name} ({res['time']:.2f}s)")
-                    results.append(res)
-            except Exception as exc:
-                print(f"[{completed}/{total}] ❌ {name} generated an exception: {exc}")
+            for future in concurrent.futures.as_completed(future_to_task):
+                task = future_to_task[future]
+                name = Path(task[0]).stem
+                
+                try:
+                    res = future.result()
+                    if "error" in res:
+                        console.print(f"[red]❌ {name}: {res['error']}[/]")
+                    else:
+                        # console.print(f"[green]✅ {name} ({res['time']:.2f}s)[/]")
+                        results.append(res)
+                except Exception as exc:
+                    console.print(f"[bold red]❌ {name} generated an exception: {exc}[/]")
+                
+                progress.advance(task_id)
 
     # Generate Report
     if results:
@@ -353,26 +422,41 @@ def run_session(sets, quality="ultra", colors=None, max_workers=None):
         with open(json_path, "w") as f:
             json.dump(results, f, indent=2)
             
-        print(f"\n✅ Session Complete!")
-        print(f"📊 Summary:")
-        print(f"  • Avg SSIM:     {avg_ssim:.2f}%")
-        print(f"  • Avg Topology: {avg_topo:.1f}%")
-        print(f"  • Avg Edge:     {avg_edge:.1f}%")
-        print(f"  • Avg Delta E:  {avg_de:.2f}")
-        print(f"  • Avg Time:     {avg_time:.2f}s")
-        print(f"📄 Report: {report_path}")
+        console.print(f"\n[bold green]✅ Session Complete![/]")
+        
+        table = Table(title="Session Summary", box=box.ROUNDED)
+        table.add_column("Metric", style="cyan")
+        table.add_column("Average Value", style="magenta")
+        
+        table.add_row("SSIM", f"{avg_ssim:.2f}%")
+        table.add_row("Topology Score", f"{avg_topo:.1f}%")
+        table.add_row("Edge Accuracy", f"{avg_edge:.1f}%")
+        table.add_row("Delta E", f"{avg_de:.2f}")
+        table.add_row("Time per Image", f"{avg_time:.2f}s")
+        
+        console.print(table)
+        console.print(f"[bold]📄 Report:[/] [link=file://{report_path}]{report_path}[/link]")
         
         # Open report if on macOS
         if sys.platform == "darwin":
             subprocess.run(["open", str(report_path)])
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run SOTA Vectorization Session")
-    parser.add_argument("--sets", nargs="+", default=["mono", "multi", "complex"], help="Test sets to run (mono, multi, complex)")
-    parser.add_argument("--quality", default="ultra", help="Vectalab quality setting")
-    parser.add_argument("--colors", type=int, help="Force number of colors")
-    parser.add_argument("--workers", type=int, default=None, help="Max number of parallel workers")
+def main():
+    parser = argparse.ArgumentParser(
+        description="Run a SOTA Vectorization Session using Vectalab.",
+        epilog="Example:\n  vectalab-benchmark --input-dir ./my_images --mode premium",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument("--sets", nargs="+", default=["mono", "multi", "complex"], help="Test sets to run (default: mono multi complex)")
+    parser.add_argument("--quality", default="ultra", help="Vectalab quality setting (default: ultra)")
+    parser.add_argument("--colors", type=int, help="Force number of colors (optional)")
+    parser.add_argument("--workers", type=int, default=None, help="Max number of parallel workers (default: auto)")
+    parser.add_argument("--input-dir", help="Custom input directory of images to process (overrides --sets)")
+    parser.add_argument("--mode", default="auto", choices=["auto", "logo", "premium"], help="Vectorization mode (default: auto)")
     
     args = parser.parse_args()
     
-    run_session(args.sets, args.quality, args.colors, args.workers)
+    run_session(args.sets, args.quality, args.colors, args.workers, args.input_dir, args.mode)
+
+if __name__ == "__main__":
+    main()

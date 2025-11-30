@@ -48,6 +48,7 @@ vectalab svgo-info
 | `logo` | Logo-optimized conversion |
 | `info` | Analyze image |
 | `svgo-info` | Check SVGO status |
+| `benchmark` | 📊 Run performance benchmarks |
 
 ## Usage
 
@@ -65,6 +66,18 @@ vectalab premium photo.jpg --mode photo --colors 32
 
 # Compress existing SVG
 vectalab optimize icon.svg
+```
+
+### Benchmarking
+
+Run comprehensive benchmarks on your own images to evaluate quality and performance.
+
+```bash
+# Benchmark a directory of images
+vectalab-benchmark --input-dir ./my_images --mode premium
+
+# Run standard test sets
+vectalab-benchmark --sets mono multi
 ```
 
 ### Python
