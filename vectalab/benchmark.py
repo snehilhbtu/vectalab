@@ -53,6 +53,12 @@ from vectalab.quality import (
     calculate_color_error, 
     analyze_path_types
 )
+try:
+    from vectalab.perceptual import calculate_lpips
+    LPIPS_AVAILABLE = True
+except ImportError:
+    LPIPS_AVAILABLE = False
+
 from vectalab.icon import is_monochrome_icon, process_geometric_icon
 from vectalab.auto import determine_auto_mode
 
@@ -232,6 +238,48 @@ def process_image(args):
         topo = calculate_topology_score(arr_ref, arr_out)
         edge = calculate_edge_accuracy(arr_ref, arr_out)
         de = calculate_color_error(arr_ref, arr_out)
+        
+        lpips_val = 0.0
+        if LPIPS_AVAILABLE:
+            # LPIPS expects 0-1 range if passed as array? No, my wrapper handles it.
+            # But wait, calculate_lpips wrapper handles numpy arrays.
+            # Let's pass the PIL images directly to be safe/efficient.
+            lpips_res = calculate_lpips(img_ref, img_out)
+            if lpips_res is not None:
+                lpips_val = lpips_res
+
+        # FEEDBACK LOOP (Auto Mode Only)
+        # If LPIPS is high (> 0.15) and we used 'logo' mode, it might be a complex image.
+        # Retry with 'premium' mode.
+        if mode == "auto" and effective_mode == "logo" and lpips_val > 0.15:
+            effective_mode = "premium (retry)"
+            
+            # Run Premium
+            cmd = ["vectalab", "premium", str(input_png), str(output_svg), "--mode", "photo", "--quality", "0.95"]
+            start_time = time.time()
+            subprocess.run(cmd, check=True, capture_output=True, timeout=120)
+            duration += (time.time() - start_time)
+            
+            # Re-render
+            if not render_svg_to_png(output_svg, out_png):
+                return {"error": "Failed to render output SVG (Retry)", "name": name}
+                
+            # Re-calculate metrics
+            img_out = Image.open(out_png).convert('RGB')
+            if img_ref.size != img_out.size:
+                img_out = img_out.resize(img_ref.size)
+            arr_out = np.array(img_out)
+            
+            s = ssim(arr_ref, arr_out, channel_axis=2, data_range=255) * 100
+            topo = calculate_topology_score(arr_ref, arr_out)
+            edge = calculate_edge_accuracy(arr_ref, arr_out)
+            de = calculate_color_error(arr_ref, arr_out)
+            
+            if LPIPS_AVAILABLE:
+                lpips_res = calculate_lpips(img_ref, img_out)
+                if lpips_res is not None:
+                    lpips_val = lpips_res
+
         paths = count_paths(output_svg)
         path_analysis = analyze_path_types(output_svg)
         
@@ -249,6 +297,7 @@ def process_image(args):
             "topology": topo,
             "edge": edge,
             "delta_e": de,
+            "lpips": lpips_val,
             "paths": paths,
             "complexity": path_analysis['total'],
             "curve_fraction": path_analysis['curve_fraction'],
@@ -427,6 +476,7 @@ def run_session(sets, quality="ultra", colors=None, max_workers=None, input_dir=
         avg_topo = np.mean([r['topology'] for r in results])
         avg_edge = np.mean([r['edge'] for r in results])
         avg_de = np.mean([r['delta_e'] for r in results])
+        avg_lpips = np.mean([r.get('lpips', 0.0) for r in results])
         avg_time = np.mean([r['time'] for r in results])
         avg_complexity = np.mean([r.get('complexity', 0) for r in results])
         avg_curve_fraction = np.mean([r.get('curve_fraction', 0) for r in results])
@@ -441,6 +491,7 @@ def run_session(sets, quality="ultra", colors=None, max_workers=None, input_dir=
             avg_topo=avg_topo,
             avg_edge=avg_edge,
             avg_de=avg_de,
+            avg_lpips=avg_lpips,
             avg_time=avg_time,
             avg_complexity=avg_complexity,
             avg_curve_fraction=avg_curve_fraction
@@ -463,6 +514,7 @@ def run_session(sets, quality="ultra", colors=None, max_workers=None, input_dir=
         table.add_column("Description", style="dim")
         
         table.add_row("SSIM", f"{avg_ssim:.2f}%", "Visual similarity (100% is perfect)")
+        table.add_row("LPIPS", f"{avg_lpips:.4f}", "Perceptual distance (0 is perfect)")
         table.add_row("Topology Score", f"{avg_topo:.1f}%", "Preservation of holes and shapes")
         table.add_row("Edge Accuracy", f"{avg_edge:.1f}%", "Geometric boundary alignment")
         table.add_row("Delta E", f"{avg_de:.2f}", "Color error (0 is perfect)")

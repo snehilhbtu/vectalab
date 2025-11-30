@@ -367,9 +367,28 @@ def _run_auto_conversion(
             
             with console.status("[cyan]Vectorizing...[/]"):
                 vectorize_logo_premium(str(input_path), str(output_path), verbose=verbose)
-            if not quiet:
+            
+            # FEEDBACK LOOP: Check LPIPS
+            metrics = _calculate_full_metrics(input_path, output_path)
+            lpips_val = metrics.get('lpips')
+            
+            # If LPIPS is high (> 0.15), it might be a complex illustration misclassified as a logo
+            # or a logo with gradients that 'logo' mode handled poorly.
+            if lpips_val is not None and lpips_val > 0.15:
+                if not quiet:
+                    console.print(f"[yellow]⚠️  Quality check warning (LPIPS {lpips_val:.3f} > 0.15).[/]")
+                    console.print("[cyan]🔄 Retrying with Premium Photo method for better detail...[/]")
+                
+                with console.status("[cyan]Re-vectorizing (Attempt 2)...[/]"):
+                    vectorize_premium(str(input_path), str(output_path), verbose=verbose)
+                
+                # Recalculate metrics for new result
                 metrics = _calculate_full_metrics(input_path, output_path)
+                metrics['method'] = 'Premium (Auto-Retry)'
+            else:
                 metrics['method'] = 'Logo Premium'
+
+            if not quiet:
                 _show_auto_results(output_path, metrics)
             return
             
@@ -411,9 +430,16 @@ def _calculate_full_metrics(input_path: Path, output_path: Path) -> dict:
             analyze_path_types,
             render_svg_to_array
         )
+        try:
+            from vectalab.perceptual import calculate_lpips
+            LPIPS_AVAILABLE = True
+        except ImportError:
+            LPIPS_AVAILABLE = False
+            
         from skimage.metrics import structural_similarity as ssim
         import cv2
         import numpy as np
+        from PIL import Image
         
         # Load input
         img_ref = cv2.imread(str(input_path))
@@ -433,11 +459,19 @@ def _calculate_full_metrics(input_path: Path, output_path: Path) -> dict:
         de = calculate_color_error(img_ref, img_out)
         path_analysis = analyze_path_types(str(output_path))
         
+        lpips_val = None
+        if LPIPS_AVAILABLE:
+            # Convert to PIL for LPIPS
+            pil_ref = Image.fromarray(img_ref)
+            pil_out = Image.fromarray(img_out)
+            lpips_val = calculate_lpips(pil_ref, pil_out)
+        
         return {
             "ssim": s,
             "topology": topo,
             "edge": edge,
             "delta_e": de,
+            "lpips": lpips_val,
             "curve_fraction": path_analysis['curve_fraction'],
             "total_segments": path_analysis['total'],
             "file_size": output_path.stat().st_size
@@ -471,6 +505,12 @@ def _show_auto_results(output_path: Path, metrics: dict):
     ssim_val = metrics.get('ssim', 0)
     ssim_text = format_ssim(ssim_val / 100.0) # format_ssim expects 0-1
     result_table.add_row("Quality (SSIM)", ssim_text, "Pixel-perfect similarity")
+    
+    # LPIPS
+    lpips_val = metrics.get('lpips')
+    if lpips_val is not None:
+        lpips_style = "bold green" if lpips_val < 0.1 else "yellow" if lpips_val < 0.3 else "red"
+        result_table.add_row("Perceptual (LPIPS)", Text(f"{lpips_val:.4f}", style=lpips_style), "Human perceptual distance (lower is better)")
     
     # Topology
     topo = metrics.get('topology', 0)

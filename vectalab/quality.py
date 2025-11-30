@@ -44,6 +44,12 @@ try:
 except ImportError:
     SKIMAGE_AVAILABLE = False
 
+try:
+    from vectalab.perceptual import calculate_lpips
+    LPIPS_AVAILABLE = True
+except ImportError:
+    LPIPS_AVAILABLE = False
+
 
 # ============================================================================
 # QUALITY METRICS
@@ -376,12 +382,18 @@ def compute_pixel_metrics(original: np.ndarray, rendered: np.ndarray) -> Dict[st
     delta_e = compute_color_accuracy(original, rendered)
     topology = compute_topology_preservation(original, rendered)
     
+    # LPIPS
+    lpips_score = None
+    if LPIPS_AVAILABLE:
+        lpips_score = calculate_lpips(original, rendered)
+
     return {
         "ssim": ssim_value,
         "ssim_perceptual": ssim_perceptual,
         "edge_similarity": edge_sim,
         "delta_e": delta_e,
         "topology_score": topology,
+        "lpips": lpips_score,
         "psnr": psnr,
         "mae": mae,
         "max_error": max_error,
