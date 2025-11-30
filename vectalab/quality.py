@@ -100,6 +100,126 @@ def render_svg_to_array(svg_content: str, width: int, height: int) -> np.ndarray
     return np.array(img)
 
 
+def calculate_topology_score(img1: np.ndarray, img2: np.ndarray) -> float:
+    """Calculate topology score based on connected components and holes."""
+    try:
+        g1 = cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY)
+        g2 = cv2.cvtColor(img2, cv2.COLOR_RGB2GRAY)
+        
+        _, b1 = cv2.threshold(g1, 127, 255, cv2.THRESH_BINARY)
+        _, b2 = cv2.threshold(g2, 127, 255, cv2.THRESH_BINARY)
+        
+        n1, l1, s1, _ = cv2.connectedComponentsWithStats(b1)
+        n2, l2, s2, _ = cv2.connectedComponentsWithStats(b2)
+        
+        count1 = sum(1 for i in range(1, n1) if s1[i, cv2.CC_STAT_AREA] >= 10)
+        count2 = sum(1 for i in range(1, n2) if s2[i, cv2.CC_STAT_AREA] >= 10)
+        
+        _, bi1 = cv2.threshold(g1, 127, 255, cv2.THRESH_BINARY_INV)
+        _, bi2 = cv2.threshold(g2, 127, 255, cv2.THRESH_BINARY_INV)
+        
+        nh1, lh1, sh1, _ = cv2.connectedComponentsWithStats(bi1)
+        nh2, lh2, sh2, _ = cv2.connectedComponentsWithStats(bi2)
+        
+        hole1 = sum(1 for i in range(1, nh1) if sh1[i, cv2.CC_STAT_AREA] >= 10)
+        hole2 = sum(1 for i in range(1, nh2) if sh2[i, cv2.CC_STAT_AREA] >= 10)
+        
+        max_comp = max(count1, count2, 1)
+        max_hole = max(hole1, hole2, 1)
+        
+        comp_diff = abs(count1 - count2)
+        hole_diff = abs(hole1 - hole2)
+        
+        comp_score = 1.0 - (comp_diff / max_comp)
+        hole_score = 1.0 - (hole_diff / max_hole)
+        
+        total_score = (comp_score * 0.6 + hole_score * 0.4) * 100
+        return max(0.0, min(100.0, total_score))
+    except Exception:
+        return 0.0
+
+
+def calculate_edge_accuracy(img1: np.ndarray, img2: np.ndarray) -> float:
+    """Calculate edge accuracy using Canny edge detection overlap."""
+    try:
+        g1 = cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY)
+        g2 = cv2.cvtColor(img2, cv2.COLOR_RGB2GRAY)
+        
+        e1 = cv2.Canny(g1, 100, 200)
+        e2 = cv2.Canny(g2, 100, 200)
+        
+        kernel = np.ones((3,3), np.uint8)
+        e1_d = cv2.dilate(e1, kernel, iterations=1)
+        e2_d = cv2.dilate(e2, kernel, iterations=1)
+        
+        intersection = np.logical_and(e1_d > 0, e2_d > 0)
+        union = np.logical_or(e1_d > 0, e2_d > 0)
+        
+        if np.sum(union) == 0:
+            return 100.0
+            
+        iou = np.sum(intersection) / np.sum(union)
+        return iou * 100
+    except Exception:
+        return 0.0
+
+
+def calculate_color_error(img1: np.ndarray, img2: np.ndarray) -> float:
+    """Calculate Delta E (CIEDE2000) color error."""
+    if not SKIMAGE_AVAILABLE:
+        return 0.0
+    try:
+        lab1 = skimage_color.rgb2lab(img1)
+        lab2 = skimage_color.rgb2lab(img2)
+        delta_e = skimage_color.deltaE_ciede2000(lab1, lab2)
+        return np.mean(delta_e)
+    except Exception:
+        return 0.0
+
+
+def analyze_path_types(svg_path: str) -> Dict[str, Any]:
+    """
+    Analyze the types of path segments (Curves vs Lines) in the SVG.
+    Returns a dictionary with counts and fractions.
+    """
+    try:
+        with open(svg_path, 'r') as f:
+            content = f.read()
+        
+        # Find all d attributes
+        d_attrs = re.findall(r'd="([^"]+)"', content)
+        
+        curve_cmds = 0
+        line_cmds = 0
+        total_cmds = 0
+        
+        for d in d_attrs:
+            # Normalize spacing
+            d = re.sub(r'\s+', ' ', d).strip()
+            # Find all commands
+            commands = re.findall(r'[MmLlHhVvCcQqSsAaZz]', d)
+            
+            for cmd in commands:
+                if cmd.lower() == 'm': continue # Move doesn't count as a segment
+                
+                total_cmds += 1
+                # C, Q, S, A are curves. L, H, V, Z are lines (Z closes with a line)
+                if cmd.lower() in ['c', 'q', 's', 'a']:
+                    curve_cmds += 1
+                else:
+                    line_cmds += 1
+                    
+        fraction = (curve_cmds / total_cmds) * 100 if total_cmds > 0 else 0
+        return {
+            "total": total_cmds,
+            "curves": curve_cmds,
+            "lines": line_cmds,
+            "curve_fraction": fraction
+        }
+    except Exception:
+        return {"total": 0, "curves": 0, "lines": 0, "curve_fraction": 0}
+
+
 def compute_edge_similarity(img1: np.ndarray, img2: np.ndarray) -> float:
     """
     Compute edge similarity using dilated Canny edges.

@@ -46,7 +46,15 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 from rich.table import Table
 from rich.panel import Panel
 from rich import box
-from vectalab.quality import analyze_image
+from vectalab.quality import (
+    analyze_image, 
+    calculate_topology_score, 
+    calculate_edge_accuracy, 
+    calculate_color_error, 
+    analyze_path_types
+)
+from vectalab.icon import is_monochrome_icon, process_geometric_icon
+from vectalab.auto import determine_auto_mode
 
 # Initialize Rich Console
 console = Console()
@@ -59,39 +67,6 @@ TEST_RUNS_DIR = BASE_DIR / "test_runs"
 TEMPLATE_DIR = BASE_DIR / "scripts" / "templates"
 
 # --- Metrics Functions ---
-
-def is_monochrome_icon(img_path):
-    """
-    Check if the image is a monochrome icon on transparent background.
-    Returns (bool, color_tuple).
-    """
-    try:
-        img = Image.open(img_path).convert('RGBA')
-        arr = np.array(img)
-        alpha = arr[:, :, 3]
-        
-        # If mostly opaque (e.g. > 95%), it's likely not a transparent icon
-        if np.mean(alpha > 10) > 0.95: 
-            return False, None
-        
-        # Check colors of visible pixels
-        visible_mask = alpha > 10
-        if not np.any(visible_mask): 
-            return False, None
-        
-        visible = arr[visible_mask]
-        
-        # Get average color and variance
-        avg_color = np.mean(visible[:, :3], axis=0)
-        std_color = np.std(visible[:, :3], axis=0)
-        
-        # Low variance implies monochrome
-        if np.max(std_color) > 30: 
-            return False, None
-            
-        return True, tuple(map(int, avg_color))
-    except Exception:
-        return False, None
 
 def render_svg_to_png(svg_path, png_output, size=512):
     """Render SVG to PNG using CairoSVG."""
@@ -119,111 +94,6 @@ def count_paths(svg_path):
         return count
     except Exception as e:
         return 0
-
-def calculate_topology_score(img1, img2):
-    """Calculate topology score based on connected components and holes."""
-    g1 = cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY)
-    g2 = cv2.cvtColor(img2, cv2.COLOR_RGB2GRAY)
-    
-    _, b1 = cv2.threshold(g1, 127, 255, cv2.THRESH_BINARY)
-    _, b2 = cv2.threshold(g2, 127, 255, cv2.THRESH_BINARY)
-    
-    n1, l1, s1, _ = cv2.connectedComponentsWithStats(b1)
-    n2, l2, s2, _ = cv2.connectedComponentsWithStats(b2)
-    
-    count1 = sum(1 for i in range(1, n1) if s1[i, cv2.CC_STAT_AREA] >= 10)
-    count2 = sum(1 for i in range(1, n2) if s2[i, cv2.CC_STAT_AREA] >= 10)
-    
-    _, bi1 = cv2.threshold(g1, 127, 255, cv2.THRESH_BINARY_INV)
-    _, bi2 = cv2.threshold(g2, 127, 255, cv2.THRESH_BINARY_INV)
-    
-    nh1, lh1, sh1, _ = cv2.connectedComponentsWithStats(bi1)
-    nh2, lh2, sh2, _ = cv2.connectedComponentsWithStats(bi2)
-    
-    hole1 = sum(1 for i in range(1, nh1) if sh1[i, cv2.CC_STAT_AREA] >= 10)
-    hole2 = sum(1 for i in range(1, nh2) if sh2[i, cv2.CC_STAT_AREA] >= 10)
-    
-    max_comp = max(count1, count2, 1)
-    max_hole = max(hole1, hole2, 1)
-    
-    comp_diff = abs(count1 - count2)
-    hole_diff = abs(hole1 - hole2)
-    
-    comp_score = 1.0 - (comp_diff / max_comp)
-    hole_score = 1.0 - (hole_diff / max_hole)
-    
-    total_score = (comp_score * 0.6 + hole_score * 0.4) * 100
-    return max(0, min(100, total_score))
-
-def calculate_edge_accuracy(img1, img2):
-    """Calculate edge accuracy using Canny edge detection overlap."""
-    g1 = cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY)
-    g2 = cv2.cvtColor(img2, cv2.COLOR_RGB2GRAY)
-    
-    e1 = cv2.Canny(g1, 100, 200)
-    e2 = cv2.Canny(g2, 100, 200)
-    
-    kernel = np.ones((3,3), np.uint8)
-    e1_d = cv2.dilate(e1, kernel, iterations=1)
-    e2_d = cv2.dilate(e2, kernel, iterations=1)
-    
-    intersection = np.logical_and(e1_d > 0, e2_d > 0)
-    union = np.logical_or(e1_d > 0, e2_d > 0)
-    
-    if np.sum(union) == 0:
-        return 100.0
-        
-    iou = np.sum(intersection) / np.sum(union)
-    return iou * 100
-
-def calculate_color_error(img1, img2):
-    """Calculate Delta E (CIEDE2000) color error."""
-    lab1 = color.rgb2lab(img1)
-    lab2 = color.rgb2lab(img2)
-    delta_e = color.deltaE_ciede2000(lab1, lab2)
-    return np.mean(delta_e)
-
-def analyze_path_types(svg_path):
-    """
-    Analyze the types of path segments (Curves vs Lines) in the SVG.
-    Returns a dictionary with counts and fractions.
-    """
-    try:
-        with open(svg_path, 'r') as f:
-            content = f.read()
-        
-        # Find all d attributes
-        d_attrs = re.findall(r'd="([^"]+)"', content)
-        
-        curve_cmds = 0
-        line_cmds = 0
-        total_cmds = 0
-        
-        for d in d_attrs:
-            # Normalize spacing
-            d = re.sub(r'\s+', ' ', d).strip()
-            # Find all commands
-            commands = re.findall(r'[MmLlHhVvCcQqSsAaZz]', d)
-            
-            for cmd in commands:
-                if cmd.lower() == 'm': continue # Move doesn't count as a segment
-                
-                total_cmds += 1
-                # C, Q, S, A are curves. L, H, V, Z are lines (Z closes with a line)
-                if cmd.lower() in ['c', 'q', 's', 'a']:
-                    curve_cmds += 1
-                else:
-                    line_cmds += 1
-                    
-        fraction = (curve_cmds / total_cmds) * 100 if total_cmds > 0 else 0
-        return {
-            "total": total_cmds,
-            "curves": curve_cmds,
-            "lines": line_cmds,
-            "curve_fraction": fraction
-        }
-    except Exception:
-        return {"total": 0, "curves": 0, "lines": 0, "curve_fraction": 0}
 
 def create_checkerboard(w, h, cell_size=20, color1=(255, 255, 255), color2=(220, 220, 220)):
     """Create a checkerboard pattern image."""
@@ -298,114 +168,16 @@ def process_image(args):
     mono_color = None
     
     if mode == "auto":
-        # Smart Auto Mode
-        try:
-            # Check for Monochrome Icon first (Geometric shapes)
-            is_mono, m_color = is_monochrome_icon(input_png)
-            if is_mono:
-                effective_mode = "geometric_icon"
-                mono_color = m_color
-            else:
-                # Analyze image content
-                img = cv2.imread(str(input_png))
-                if img is not None:
-                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                    analysis = analyze_image(img_rgb)
-                    
-                    if analysis['is_logo']:
-                        # Heuristic: High color count (> 1000) usually means complex illustration/gradients
-                        # even if top-10 coverage is high (e.g. cartoons). Use Premium for these.
-                        if analysis['unique_colors'] > 1000:
-                            effective_mode = "premium"
-                        else:
-                            effective_mode = "logo"
-                            # Heuristic: Very simple logos (high top-10 coverage) benefit from 'clean'
-                            # Complex logos benefit from 'ultra'
-                            if analysis['top_10_coverage'] > 0.90:
-                                effective_quality = "clean"
-                            else:
-                                effective_quality = "ultra"
-                    else:
-                        effective_mode = "premium"
-                else:
-                    # Fallback if image load fails
-                    if set_name == "complex":
-                        effective_mode = "premium"
-                    else:
-                        effective_mode = "logo"
-        except Exception as e:
-            # Fallback on error
-            if set_name == "complex":
-                effective_mode = "premium"
-            else:
-                effective_mode = "logo"
+        # Use centralized auto logic
+        effective_mode, effective_quality, mono_color = determine_auto_mode(str(input_png), set_name)
             
     if effective_mode == "geometric_icon":
-        # Special handling for geometric icons:
-        # 1. Create inverted image (White shape on Black bg) to help vectalab trace the shape
-        # 2. Run premium mode with shape detection
-        # 3. Post-process SVG to restore original color and transparency
-        
-        temp_input = dirs["input"] / f"temp_inverted_{name}.png"
+        # Special handling for geometric icons using shared implementation
         try:
-            orig_img = Image.open(input_png).convert('RGBA')
-            # Create Black background
-            bg = Image.new('RGB', orig_img.size, (0, 0, 0))
-            # Paste White shape
-            white_shape = Image.new('RGB', orig_img.size, (255, 255, 255))
-            bg.paste(white_shape, mask=orig_img.split()[3])
-            bg.save(temp_input)
-            
-            cmd = ["vectalab", "premium", str(temp_input), str(output_svg), "--mode", "logo", "--shapes"]
-            
-            # Run Vectalab
-            start_time = time.time()
-            subprocess.run(cmd, check=True, capture_output=True, timeout=120)
-            duration = time.time() - start_time
-            
-            # Post-process SVG
-            if output_svg.exists():
-                tree = ET.parse(output_svg)
-                root = tree.getroot()
-                ns = {'svg': 'http://www.w3.org/2000/svg'}
-                # Register namespace to avoid ns0: prefixes
-                ET.register_namespace('', ns['svg'])
-                
-                # Find paths
-                paths_to_remove = []
-                hex_color = '#{:02x}{:02x}{:02x}'.format(*mono_color)
-                
-                for elem in root.iter():
-                    # Check if it's a path
-                    if elem.tag.endswith('path'):
-                        fill = elem.get('fill', '').lower()
-                        # If black (background), mark for removal
-                        if fill == '#000000' or fill == '#000' or (not fill and 'fill' not in elem.attrib):
-                             # Check if it covers the whole image? 
-                             # For now, assume black paths are background in this inverted scheme
-                             # But wait, what if the icon has holes? The holes are black in the inverted image.
-                             # But vectalab usually uses fill-rule or compound paths.
-                             # In our manual test, the background was a separate black path.
-                             # And the shape was a white path.
-                             # So we remove black paths.
-                             paths_to_remove.append(elem)
-                        elif fill == '#ffffff' or fill == '#fff':
-                            # This is our shape
-                            elem.set('fill', hex_color)
-                            
-                # Remove background paths
-                # Note: removing from iterator is unsafe, but we are iterating tree.iter() which flattens.
-                # We need to find parent to remove. ET doesn't support getparent easily.
-                # So we iterate direct children of root (usually paths are direct children in vectalab output)
-                
-                # Re-parse to be safe or iterate copy
-                root_children = list(root)
-                for child in root_children:
-                    if child in paths_to_remove:
-                        root.remove(child)
-                        
-                tree.write(str(output_svg))
-                
+            success, result = process_geometric_icon(str(input_png), str(output_svg), mono_color)
+            if not success:
+                raise Exception(result.get("error", "Unknown error"))
+            duration = 0 # process_geometric_icon doesn't return duration, could measure here
         except Exception as e:
             # Fallback to standard logo mode if anything fails
             cmd = ["vectalab", "logo", str(input_png), str(output_svg), "--quality", "ultra"]

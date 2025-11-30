@@ -17,6 +17,13 @@ from rich.table import Table
 from rich.text import Text
 from rich import box
 
+# Import icon processing
+try:
+    from vectalab.icon import is_monochrome_icon, process_geometric_icon
+    ICON_MODULE_AVAILABLE = True
+except ImportError:
+    ICON_MODULE_AVAILABLE = False
+
 # Initialize Typer app and Rich console
 app = typer.Typer(
     name="vectalab",
@@ -36,6 +43,7 @@ error_console = Console(stderr=True, style="bold red")
 
 class Method(str, Enum):
     """Vectorization method."""
+    auto = "auto"
     hifi = "hifi"
     bayesian = "bayesian"
     sam = "sam"
@@ -285,7 +293,11 @@ def convert(
         console.print()
     
     try:
-        if method == Method.hifi:
+        if method == Method.auto:
+            _run_auto_conversion(
+                input_path, output_path, target_ssim, quality, device, verbose, quiet, use_modal
+            )
+        elif method == Method.hifi:
             _run_hifi_conversion(
                 input_path, output_path, target_ssim, quality, verbose, quiet
             )
@@ -301,6 +313,192 @@ def convert(
         if verbose:
             console.print_exception()
         raise typer.Exit(1)
+
+
+from vectalab.auto import determine_auto_mode
+
+def _run_auto_conversion(
+    input_path: Path,
+    output_path: Path,
+    target_ssim: float,
+    quality: Quality,
+    device: Device,
+    verbose: bool,
+    quiet: bool,
+    use_modal: bool,
+):
+    """Run auto-detected vectorization."""
+    
+    # Use centralized auto logic
+    effective_mode, effective_quality, mono_color = determine_auto_mode(str(input_path))
+    
+    if effective_mode == "geometric_icon" and ICON_MODULE_AVAILABLE:
+        if not quiet:
+            console.print("[cyan]ℹ️  Detected monochrome geometric icon.[/]")
+            console.print("[cyan]🚀 Using specialized geometric icon strategy...[/]")
+        
+        with console.status("[cyan]Processing geometric icon...[/]"):
+            success, result = process_geometric_icon(
+                str(input_path), 
+                str(output_path), 
+                mono_color, 
+                verbose=verbose
+            )
+            
+        if success:
+            if not quiet:
+                # Calculate and show full metrics
+                metrics = _calculate_full_metrics(input_path, output_path)
+                metrics['method'] = 'Geometric Icon'
+                _show_auto_results(output_path, metrics)
+            return
+        else:
+            if not quiet:
+                console.print("[yellow]⚠️ Geometric icon processing failed, falling back to standard method.[/]")
+    
+    # Fallback or other modes
+    try:
+        from vectalab.premium import vectorize_premium, vectorize_logo_premium
+        
+        if effective_mode == "logo":
+            if not quiet:
+                console.print("[cyan]ℹ️  Detected logo.[/]")
+                console.print("[cyan]🚀 Using Logo Premium method...[/]")
+            
+            with console.status("[cyan]Vectorizing...[/]"):
+                vectorize_logo_premium(str(input_path), str(output_path), verbose=verbose)
+            if not quiet:
+                metrics = _calculate_full_metrics(input_path, output_path)
+                metrics['method'] = 'Logo Premium'
+                _show_auto_results(output_path, metrics)
+            return
+            
+        elif effective_mode == "premium":
+            if not quiet:
+                console.print("[cyan]ℹ️  Detected photograph/complex image.[/]")
+                console.print("[cyan]🚀 Using Premium method...[/]")
+            
+            with console.status("[cyan]Vectorizing...[/]"):
+                vectorize_premium(str(input_path), str(output_path), verbose=verbose)
+            if not quiet:
+                metrics = _calculate_full_metrics(input_path, output_path)
+                metrics['method'] = 'Premium'
+                _show_auto_results(output_path, metrics)
+            return
+
+    except ImportError:
+        pass # Missing dependencies
+    except Exception as e:
+        if verbose:
+            console.print(f"[yellow]Analysis failed: {e}[/]")
+
+    # 3. Fallback to HiFi
+    if not quiet:
+        console.print("[cyan]ℹ️  Using HiFi method.[/]")
+        
+    _run_hifi_conversion(
+        input_path, output_path, target_ssim, quality, verbose, quiet
+    )
+
+
+def _calculate_full_metrics(input_path: Path, output_path: Path) -> dict:
+    """Calculate comprehensive metrics for the conversion."""
+    try:
+        from vectalab.quality import (
+            calculate_topology_score, 
+            calculate_edge_accuracy, 
+            calculate_color_error, 
+            analyze_path_types,
+            render_svg_to_array
+        )
+        from skimage.metrics import structural_similarity as ssim
+        import cv2
+        import numpy as np
+        
+        # Load input
+        img_ref = cv2.imread(str(input_path))
+        if img_ref is None: return {}
+        img_ref = cv2.cvtColor(img_ref, cv2.COLOR_BGR2RGB)
+        
+        # Render output SVG
+        h, w = img_ref.shape[:2]
+        with open(output_path, 'r') as f:
+            svg_content = f.read()
+        img_out = render_svg_to_array(svg_content, w, h)
+        
+        # Calculate metrics
+        s = ssim(img_ref, img_out, channel_axis=2, data_range=255) * 100
+        topo = calculate_topology_score(img_ref, img_out)
+        edge = calculate_edge_accuracy(img_ref, img_out)
+        de = calculate_color_error(img_ref, img_out)
+        path_analysis = analyze_path_types(str(output_path))
+        
+        return {
+            "ssim": s,
+            "topology": topo,
+            "edge": edge,
+            "delta_e": de,
+            "curve_fraction": path_analysis['curve_fraction'],
+            "total_segments": path_analysis['total'],
+            "file_size": output_path.stat().st_size
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _show_auto_results(output_path: Path, metrics: dict):
+    """Display auto conversion results with full metrics."""
+    size_bytes = metrics.get('file_size', output_path.stat().st_size)
+    
+    if size_bytes < 1024:
+        size_str = f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        size_str = f"{size_bytes / 1024:.1f} KB"
+    else:
+        size_str = f"{size_bytes / (1024 * 1024):.2f} MB"
+    
+    # Create results table
+    result_table = Table(box=box.ROUNDED, show_header=True, border_style="green", header_style="bold cyan")
+    result_table.add_column("Metric", style="bold")
+    result_table.add_column("Value")
+    result_table.add_column("Meaning", style="dim")
+    
+    # Method
+    method = metrics.get('method', 'Auto')
+    result_table.add_row("Strategy", method, "Selected vectorization strategy")
+    
+    # SSIM
+    ssim_val = metrics.get('ssim', 0)
+    ssim_text = format_ssim(ssim_val / 100.0) # format_ssim expects 0-1
+    result_table.add_row("Quality (SSIM)", ssim_text, "Pixel-perfect similarity")
+    
+    # Topology
+    topo = metrics.get('topology', 0)
+    result_table.add_row("Topology", f"{topo:.1f}%", "Preservation of holes and islands")
+    
+    # Edge Accuracy
+    edge = metrics.get('edge', 0)
+    result_table.add_row("Edge Accuracy", f"{edge:.1f}%", "Geometric alignment of boundaries")
+    
+    # Curve Fraction
+    curve = metrics.get('curve_fraction', 0)
+    result_table.add_row("Curve Fraction", f"{curve:.1f}%", "Percentage of curved segments")
+    
+    # Delta E
+    de = metrics.get('delta_e', 0)
+    de_style = "green" if de < 2.3 else "yellow" if de < 10 else "red"
+    result_table.add_row("Color Error (ΔE)", Text(f"{de:.2f}", style=de_style), "Color deviation (lower is better)")
+    
+    # File size
+    result_table.add_row("File Size", size_str, "Output SVG file size")
+    
+    result_table.add_row("Output", str(output_path), "Path to generated file")
+    
+    title = "🚀 Auto Vectorization Complete"
+    border_style = "green"
+    
+    console.print()
+    console.print(Panel(result_table, title=title, border_style=border_style))
 
 
 def _run_hifi_conversion(
