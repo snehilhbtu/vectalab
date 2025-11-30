@@ -248,9 +248,10 @@ def analyze_image(image_rgb: np.ndarray) -> Dict[str, Any]:
 
 def reduce_to_palette(image_rgb: np.ndarray, n_colors: int = 16) -> np.ndarray:
     """
-    Reduce image to fixed color palette.
+    Reduce image to fixed color palette using K-means clustering.
     
-    Uses PIL's median cut algorithm for optimal palette selection.
+    Uses K-means clustering which provides better color representation
+    than Median Cut for logos and graphics.
     
     Args:
         image_rgb: RGB image
@@ -259,10 +260,45 @@ def reduce_to_palette(image_rgb: np.ndarray, n_colors: int = 16) -> np.ndarray:
     Returns:
         Image with reduced color palette
     """
-    pil_img = Image.fromarray(image_rgb)
-    quantized = pil_img.quantize(colors=n_colors, method=Image.Quantize.MEDIANCUT)
-    rgb_img = quantized.convert('RGB')
-    return np.array(rgb_img)
+    # Reshape to list of pixels
+    pixels = image_rgb.reshape((-1, 3))
+    pixels = np.float32(pixels)
+
+    # Define criteria = ( type, max_iter, epsilon )
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.2)
+    
+    # Apply KMeans
+    # Use KMEANS_PP_CENTERS for better initialization
+    try:
+        _, labels, centers = cv2.kmeans(
+            pixels, 
+            n_colors, 
+            None, 
+            criteria, 
+            10, 
+            cv2.KMEANS_PP_CENTERS
+        )
+        
+        # Convert back to 8 bit values
+        centers = np.uint8(centers)
+
+        # Map labels to center values
+        res = centers[labels.flatten()]
+        
+        # Reshape back to original image
+        return res.reshape(image_rgb.shape)
+        
+    except Exception as e:
+        # Fallback to PIL if KMeans fails (e.g. memory issues)
+        print(f"Warning: KMeans failed ({e}), falling back to PIL MedianCut")
+        pil_img = Image.fromarray(image_rgb)
+        # Ensure no dithering for logos!
+        quantized = pil_img.quantize(
+            colors=n_colors, 
+            method=Image.Quantize.MEDIANCUT,
+            dither=Image.Dither.NONE
+        )
+        return np.array(quantized.convert('RGB'))
 
 
 def get_optimal_palette_size(analysis: Dict[str, Any]) -> int:
@@ -278,14 +314,18 @@ def get_optimal_palette_size(analysis: Dict[str, Any]) -> int:
     unique_colors = analysis['unique_colors']
     top_10_coverage = analysis['top_10_coverage']
     
+    # With K-means, we can be more aggressive in reducing colors
+    # as it finds better representative colors (centroids) than
+    # simple frequency analysis.
+    
     # Very simple logos (high coverage by few colors)
-    if top_10_coverage > 0.95:
+    if top_10_coverage > 0.92:  # Was 0.95
         return 8
-    elif top_10_coverage > 0.90:
+    elif top_10_coverage > 0.85:  # Was 0.90
         return 12
-    elif top_10_coverage > 0.85:
+    elif top_10_coverage > 0.75:  # Was 0.85
         return 16
-    elif top_10_coverage > 0.75:
+    elif top_10_coverage > 0.65:  # Was 0.75
         return 24
     else:
         return 32
@@ -671,7 +711,7 @@ def vectorize_logo_clean(
         n_colors = get_optimal_palette_size(analysis)
     
     if verbose:
-        print(f"Using palette: {n_colors} colors")
+        print(f"Using palette: {n_colors} colors (K-means clustering)")
     
     # Reduce to palette
     reduced = reduce_to_palette(image_rgb, n_colors)

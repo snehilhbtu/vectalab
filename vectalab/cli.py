@@ -889,8 +889,8 @@ def logo(
     
     This command is optimized for logos, icons, and simple graphics:
     - Detects if image is a logo based on color distribution
-    - Reduces to optimal color palette (8-32 colors)
-    - Creates clean, minimal SVG paths
+    - Reduces to optimal color palette (8-32 colors) using K-means clustering
+    - Creates clean, minimal SVG paths without dithering noise
     
     [bold]Examples:[/]
     
