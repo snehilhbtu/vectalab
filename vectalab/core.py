@@ -106,7 +106,13 @@ class Vectalab:
                     pt[0] *= scale_x
                     pt[1] *= scale_y
 
-            device = self.device if torch.cuda.is_available() or self.device == 'mps' else 'cpu'
+            # Determine device for Bayesian renderer
+            device = self.device
+            if device == 'cuda' and not torch.cuda.is_available():
+                device = 'cpu'
+            elif device == 'mps' and not (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()):
+                device = 'cpu'
+            
             renderer = BayesianVectorRenderer(img_small, device=device, init_paths=bayesian_init_paths, num_segments=16)
             
             print("Optimizing paths (Fine-tuning)...")

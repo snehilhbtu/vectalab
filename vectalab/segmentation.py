@@ -28,6 +28,14 @@ class SAMSegmenter:
             print(f"Checkpoint not found at {self.checkpoint_path}. Downloading...")
             self._download_checkpoint(model_type, self.checkpoint_path)
 
+        # Validate device
+        if device == 'cuda' and not torch.cuda.is_available():
+            print("Warning: CUDA requested but not available. Falling back to CPU.")
+            device = 'cpu'
+        elif device == 'mps' and not (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()):
+            print("Warning: MPS requested but not available. Falling back to CPU.")
+            device = 'cpu'
+
         print(f"Loading SAM model ({model_type}) from {self.checkpoint_path} to {device}...")
         self.sam = sam_model_registry[model_type](checkpoint=self.checkpoint_path)
         self.sam.to(device=device)
