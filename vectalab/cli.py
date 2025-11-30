@@ -1708,7 +1708,7 @@ def premium(
                 svg_path, metrics = vectorize_photo_premium(
                     str(input_path),
                     str(output_path),
-                    n_colors=colors or 32,
+                    n_colors=colors or 64,  # Updated default to 64 based on tuning
                     use_svgo=svgo,
                     precision=precision,
                     verbose=verbose,

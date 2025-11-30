@@ -460,6 +460,7 @@ def vectorize_premium(
     detect_shapes: bool = False,
     use_lab_metrics: bool = True,
     verbose: bool = True,
+    vtracer_args: Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, Dict[str, Any]]:
     """
     Premium quality vectorization with SOTA techniques.
@@ -487,6 +488,7 @@ def vectorize_premium(
         detect_shapes: Detect and report shape primitives
         use_lab_metrics: Use LAB color space for quality metrics
         verbose: Print progress
+        vtracer_args: Optional dictionary of low-level vtracer arguments to override defaults
         
     Returns:
         Tuple of (output_path, metrics_dict)
@@ -594,6 +596,12 @@ def vectorize_premium(
             'splice_threshold': 45,
             'path_precision': 5,
         }
+    
+    # Override with custom args if provided
+    if vtracer_args:
+        settings.update(vtracer_args)
+        if verbose:
+            print(f"   Custom settings: {vtracer_args}")
     
     # Save reduced image
     with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
@@ -771,7 +779,7 @@ def vectorize_logo_premium(
 def vectorize_photo_premium(
     input_path: str,
     output_path: str,
-    n_colors: int = 32,
+    n_colors: int = 64,  # Increased from 32 based on tuning
     use_svgo: bool = True,
     precision: int = 3,
     verbose: bool = True,
@@ -783,6 +791,12 @@ def vectorize_photo_premium(
     better reproduction of photographic content.
     Includes 80/20 optimizations for smaller file sizes.
     """
+    # Optimized settings from tuning (LPIPS=0.0206)
+    vtracer_args = {
+        'mode': 'polygon',
+        'corner_threshold': 60,
+    }
+
     return vectorize_premium(
         input_path,
         output_path,
@@ -797,6 +811,7 @@ def vectorize_photo_premium(
         detect_shapes=False,  # Photos rarely have geometric primitives
         use_lab_metrics=True,
         verbose=verbose,
+        vtracer_args=vtracer_args,
     )
 
 
