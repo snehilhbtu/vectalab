@@ -45,7 +45,7 @@ except ImportError:
     SKIMAGE_AVAILABLE = False
 
 try:
-    from vectalab.perceptual import calculate_lpips
+    from vectalab.perceptual import calculate_lpips, calculate_dists, calculate_gmsd
     LPIPS_AVAILABLE = True
 except ImportError:
     LPIPS_AVAILABLE = False
@@ -382,10 +382,15 @@ def compute_pixel_metrics(original: np.ndarray, rendered: np.ndarray) -> Dict[st
     delta_e = compute_color_accuracy(original, rendered)
     topology = compute_topology_preservation(original, rendered)
     
-    # LPIPS
+    # LPIPS, DISTS, GMSD
     lpips_score = None
+    dists_score = None
+    gmsd_score = None
+    
     if LPIPS_AVAILABLE:
         lpips_score = calculate_lpips(original, rendered)
+        dists_score = calculate_dists(original, rendered)
+        gmsd_score = calculate_gmsd(original, rendered)
 
     return {
         "ssim": ssim_value,
@@ -394,6 +399,8 @@ def compute_pixel_metrics(original: np.ndarray, rendered: np.ndarray) -> Dict[st
         "delta_e": delta_e,
         "topology_score": topology,
         "lpips": lpips_score,
+        "dists": dists_score,
+        "gmsd": gmsd_score,
         "psnr": psnr,
         "mae": mae,
         "max_error": max_error,

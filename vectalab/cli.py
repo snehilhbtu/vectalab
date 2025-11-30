@@ -431,7 +431,7 @@ def _calculate_full_metrics(input_path: Path, output_path: Path) -> dict:
             render_svg_to_array
         )
         try:
-            from vectalab.perceptual import calculate_lpips
+            from vectalab.perceptual import calculate_lpips, calculate_dists, calculate_gmsd
             LPIPS_AVAILABLE = True
         except ImportError:
             LPIPS_AVAILABLE = False
@@ -460,11 +460,16 @@ def _calculate_full_metrics(input_path: Path, output_path: Path) -> dict:
         path_analysis = analyze_path_types(str(output_path))
         
         lpips_val = None
+        dists_val = None
+        gmsd_val = None
+        
         if LPIPS_AVAILABLE:
             # Convert to PIL for LPIPS
             pil_ref = Image.fromarray(img_ref)
             pil_out = Image.fromarray(img_out)
             lpips_val = calculate_lpips(pil_ref, pil_out)
+            dists_val = calculate_dists(pil_ref, pil_out)
+            gmsd_val = calculate_gmsd(pil_ref, pil_out)
         
         return {
             "ssim": s,
@@ -472,6 +477,8 @@ def _calculate_full_metrics(input_path: Path, output_path: Path) -> dict:
             "edge": edge,
             "delta_e": de,
             "lpips": lpips_val,
+            "dists": dists_val,
+            "gmsd": gmsd_val,
             "curve_fraction": path_analysis['curve_fraction'],
             "total_segments": path_analysis['total'],
             "file_size": output_path.stat().st_size
@@ -511,6 +518,18 @@ def _show_auto_results(output_path: Path, metrics: dict):
     if lpips_val is not None:
         lpips_style = "bold green" if lpips_val < 0.1 else "yellow" if lpips_val < 0.3 else "red"
         result_table.add_row("Perceptual (LPIPS)", Text(f"{lpips_val:.4f}", style=lpips_style), "Human perceptual distance (lower is better)")
+        
+    # DISTS
+    dists_val = metrics.get('dists')
+    if dists_val is not None:
+        dists_style = "bold green" if dists_val < 0.1 else "yellow" if dists_val < 0.2 else "red"
+        result_table.add_row("Texture (DISTS)", Text(f"{dists_val:.4f}", style=dists_style), "Structure/Texture distance (lower is better)")
+
+    # GMSD
+    gmsd_val = metrics.get('gmsd')
+    if gmsd_val is not None:
+        gmsd_style = "bold green" if gmsd_val < 0.1 else "yellow" if gmsd_val < 0.2 else "red"
+        result_table.add_row("Gradient (GMSD)", Text(f"{gmsd_val:.4f}", style=gmsd_style), "Gradient magnitude deviation (lower is better)")
     
     # Topology
     topo = metrics.get('topology', 0)

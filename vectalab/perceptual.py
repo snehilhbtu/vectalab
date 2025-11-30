@@ -7,6 +7,8 @@ better with human perception than traditional metrics like MSE or SSIM.
 
 Metrics included:
 1. LPIPS (Learned Perceptual Image Patch Similarity)
+2. DISTS (Deep Image Structure and Texture Similarity)
+3. GMSD (Gradient Magnitude Similarity Deviation)
 """
 
 import numpy as np
@@ -18,8 +20,18 @@ from PIL import Image
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Global LPIPS model instance to avoid reloading
+# Global model instances
 _LPIPS_MODEL = None
+_DISTS_MODEL = None
+_GMSD_MODEL = None
+
+def get_device():
+    """Get the best available device."""
+    if torch.cuda.is_available():
+        return 'cuda'
+    elif torch.backends.mps.is_available():
+        return 'mps'
+    return 'cpu'
 
 def get_lpips_model(net: str = 'alex'):
     """
@@ -94,6 +106,79 @@ def preprocess_for_lpips(img: Union[np.ndarray, Image.Image]) -> torch.Tensor:
         return tensor
     
     raise ValueError(f"Unsupported image type: {type(img)}")
+
+def preprocess_for_piq(img: Union[np.ndarray, Image.Image]) -> torch.Tensor:
+    """
+    Preprocess image for PIQ metrics (0-1 range).
+    """
+    if isinstance(img, np.ndarray):
+        if img.dtype == np.uint8:
+            img = Image.fromarray(img)
+        else:
+            img = Image.fromarray((img * 255).astype(np.uint8))
+            
+    if isinstance(img, Image.Image):
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        
+        import torchvision.transforms as transforms
+        transform = transforms.ToTensor() # Converts to [0, 1]
+        tensor = transform(img).unsqueeze(0)
+        return tensor
+    
+    raise ValueError(f"Unsupported image type: {type(img)}")
+
+def calculate_dists(img1: Union[np.ndarray, Image.Image], 
+                   img2: Union[np.ndarray, Image.Image]) -> float:
+    """
+    Calculate DISTS (Deep Image Structure and Texture Similarity).
+    Lower is better (0.0 means identical).
+    """
+    global _DISTS_MODEL
+    try:
+        import piq
+        
+        if _DISTS_MODEL is None:
+            _DISTS_MODEL = piq.DISTS()
+            _DISTS_MODEL.to(get_device())
+            _DISTS_MODEL.eval()
+            
+        t1 = preprocess_for_piq(img1).to(get_device())
+        t2 = preprocess_for_piq(img2).to(get_device())
+        
+        with torch.no_grad():
+            score = _DISTS_MODEL(t1, t2)
+            
+        return float(score.item())
+    except ImportError:
+        logger.warning("piq package not found. Install with 'pip install piq'.")
+        return None
+    except Exception as e:
+        logger.error(f"Error calculating DISTS: {e}")
+        return None
+
+def calculate_gmsd(img1: Union[np.ndarray, Image.Image], 
+                  img2: Union[np.ndarray, Image.Image]) -> float:
+    """
+    Calculate GMSD (Gradient Magnitude Similarity Deviation).
+    Lower is better (0.0 means identical).
+    """
+    try:
+        import piq
+        
+        t1 = preprocess_for_piq(img1).to(get_device())
+        t2 = preprocess_for_piq(img2).to(get_device())
+        
+        with torch.no_grad():
+            score = piq.gmsd(t1, t2)
+            
+        return float(score.item())
+    except ImportError:
+        logger.warning("piq package not found. Install with 'pip install piq'.")
+        return None
+    except Exception as e:
+        logger.error(f"Error calculating GMSD: {e}")
+        return None
 
 def calculate_lpips(img1: Union[np.ndarray, Image.Image], 
                    img2: Union[np.ndarray, Image.Image],

@@ -77,6 +77,14 @@
                 <div class="metric-label">Avg LPIPS</div>
             </div>
             <div class="metric-card">
+                <div class="metric-value">{{ "%.4f"|format(avg_dists) }}</div>
+                <div class="metric-label">Avg DISTS</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{ "%.4f"|format(avg_gmsd) }}</div>
+                <div class="metric-label">Avg GMSD</div>
+            </div>
+            <div class="metric-card">
                 <div class="metric-value">{{ "%.1f"|format(avg_topo) }}%</div>
                 <div class="metric-label">Avg Topology</div>
             </div>
@@ -105,11 +113,13 @@
                     <th onclick="sortTable(0)">Name</th>
                     <th onclick="sortTable(1)">SSIM</th>
                     <th onclick="sortTable(2)">LPIPS</th>
-                    <th onclick="sortTable(3)">Topology</th>
-                    <th onclick="sortTable(4)">Edge</th>
-                    <th onclick="sortTable(5)">Delta E</th>
-                    <th onclick="sortTable(6)">Paths</th>
-                    <th onclick="sortTable(7)">Time (s)</th>
+                    <th onclick="sortTable(3)">DISTS</th>
+                    <th onclick="sortTable(4)">GMSD</th>
+                    <th onclick="sortTable(5)">Topology</th>
+                    <th onclick="sortTable(6)">Edge</th>
+                    <th onclick="sortTable(7)">Delta E</th>
+                    <th onclick="sortTable(8)">Paths</th>
+                    <th onclick="sortTable(9)">Time (s)</th>
                     <th>Output</th>
                 </tr>
             </thead>
@@ -119,6 +129,8 @@
                     <td>{{ r.icon }}</td>
                     <td class="{{ 'good' if r.ssim > 95 else 'warn' if r.ssim > 90 else 'bad' }}">{{ "%.2f"|format(r.ssim) }}</td>
                     <td class="{{ 'good' if r.lpips < 0.1 else 'warn' if r.lpips < 0.3 else 'bad' }}">{{ "%.4f"|format(r.lpips) if r.lpips is defined else 'N/A' }}</td>
+                    <td class="{{ 'good' if r.dists < 0.1 else 'warn' if r.dists < 0.2 else 'bad' }}">{{ "%.4f"|format(r.dists) if r.dists is defined else 'N/A' }}</td>
+                    <td class="{{ 'good' if r.gmsd < 0.1 else 'warn' if r.gmsd < 0.2 else 'bad' }}">{{ "%.4f"|format(r.gmsd) if r.gmsd is defined else 'N/A' }}</td>
                     <td class="{{ 'good' if r.topology > 90 else 'warn' if r.topology > 80 else 'bad' }}">{{ "%.1f"|format(r.topology) }}</td>
                     <td class="{{ 'good' if r.edge > 90 else 'warn' if r.edge > 80 else 'bad' }}">{{ "%.1f"|format(r.edge) }}</td>
                     <td class="{{ 'good' if r.delta_e < 5 else 'warn' if r.delta_e < 10 else 'bad' }}">{{ "%.2f"|format(r.delta_e) }}</td>

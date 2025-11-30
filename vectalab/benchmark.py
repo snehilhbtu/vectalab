@@ -54,7 +54,7 @@ from vectalab.quality import (
     analyze_path_types
 )
 try:
-    from vectalab.perceptual import calculate_lpips
+    from vectalab.perceptual import calculate_lpips, calculate_dists, calculate_gmsd
     LPIPS_AVAILABLE = True
 except ImportError:
     LPIPS_AVAILABLE = False
@@ -240,6 +240,9 @@ def process_image(args):
         de = calculate_color_error(arr_ref, arr_out)
         
         lpips_val = 0.0
+        dists_val = 0.0
+        gmsd_val = 0.0
+        
         if LPIPS_AVAILABLE:
             # LPIPS expects 0-1 range if passed as array? No, my wrapper handles it.
             # But wait, calculate_lpips wrapper handles numpy arrays.
@@ -247,6 +250,14 @@ def process_image(args):
             lpips_res = calculate_lpips(img_ref, img_out)
             if lpips_res is not None:
                 lpips_val = lpips_res
+            
+            dists_res = calculate_dists(img_ref, img_out)
+            if dists_res is not None:
+                dists_val = dists_res
+                
+            gmsd_res = calculate_gmsd(img_ref, img_out)
+            if gmsd_res is not None:
+                gmsd_val = gmsd_res
 
         # FEEDBACK LOOP (Auto Mode Only)
         # If LPIPS is high (> 0.15) and we used 'logo' mode, it might be a complex image.
@@ -279,6 +290,14 @@ def process_image(args):
                 lpips_res = calculate_lpips(img_ref, img_out)
                 if lpips_res is not None:
                     lpips_val = lpips_res
+                
+                dists_res = calculate_dists(img_ref, img_out)
+                if dists_res is not None:
+                    dists_val = dists_res
+                    
+                gmsd_res = calculate_gmsd(img_ref, img_out)
+                if gmsd_res is not None:
+                    gmsd_val = gmsd_res
 
         paths = count_paths(output_svg)
         path_analysis = analyze_path_types(output_svg)
@@ -298,6 +317,8 @@ def process_image(args):
             "edge": edge,
             "delta_e": de,
             "lpips": lpips_val,
+            "dists": dists_val,
+            "gmsd": gmsd_val,
             "paths": paths,
             "complexity": path_analysis['total'],
             "curve_fraction": path_analysis['curve_fraction'],
@@ -477,6 +498,8 @@ def run_session(sets, quality="ultra", colors=None, max_workers=None, input_dir=
         avg_edge = np.mean([r['edge'] for r in results])
         avg_de = np.mean([r['delta_e'] for r in results])
         avg_lpips = np.mean([r.get('lpips', 0.0) for r in results])
+        avg_dists = np.mean([r.get('dists', 0.0) for r in results])
+        avg_gmsd = np.mean([r.get('gmsd', 0.0) for r in results])
         avg_time = np.mean([r['time'] for r in results])
         avg_complexity = np.mean([r.get('complexity', 0) for r in results])
         avg_curve_fraction = np.mean([r.get('curve_fraction', 0) for r in results])
@@ -492,6 +515,8 @@ def run_session(sets, quality="ultra", colors=None, max_workers=None, input_dir=
             avg_edge=avg_edge,
             avg_de=avg_de,
             avg_lpips=avg_lpips,
+            avg_dists=avg_dists,
+            avg_gmsd=avg_gmsd,
             avg_time=avg_time,
             avg_complexity=avg_complexity,
             avg_curve_fraction=avg_curve_fraction
@@ -515,6 +540,8 @@ def run_session(sets, quality="ultra", colors=None, max_workers=None, input_dir=
         
         table.add_row("SSIM", f"{avg_ssim:.2f}%", "Visual similarity (100% is perfect)")
         table.add_row("LPIPS", f"{avg_lpips:.4f}", "Perceptual distance (0 is perfect)")
+        table.add_row("DISTS", f"{avg_dists:.4f}", "Texture/Structure distance (0 is perfect)")
+        table.add_row("GMSD", f"{avg_gmsd:.4f}", "Gradient magnitude deviation (0 is perfect)")
         table.add_row("Topology Score", f"{avg_topo:.1f}%", "Preservation of holes and shapes")
         table.add_row("Edge Accuracy", f"{avg_edge:.1f}%", "Geometric boundary alignment")
         table.add_row("Delta E", f"{avg_de:.2f}", "Color error (0 is perfect)")
