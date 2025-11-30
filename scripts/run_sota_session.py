@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Run a full SOTA vectorization session.
+Run a full SOTA vectorization session with parallel processing.
 - Creates a timestamped session directory.
-- Runs vectalab on selected test sets.
+- Runs vectalab on selected test sets in parallel.
 - Calculates comprehensive metrics.
 - Generates a visual HTML report.
 """
@@ -25,6 +25,7 @@ from skimage import color
 import cairosvg
 import xml.etree.ElementTree as ET
 from jinja2 import Environment, FileSystemLoader
+import concurrent.futures
 
 # --- Configuration ---
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -32,7 +33,7 @@ TEST_DATA_DIR = BASE_DIR / "test_data"
 TEST_RUNS_DIR = BASE_DIR / "test_runs"
 TEMPLATE_DIR = BASE_DIR / "scripts" / "templates"
 
-# --- Metrics Functions (Adapted from compare_results.py) ---
+# --- Metrics Functions ---
 
 def render_svg_to_png(svg_path, png_output, size=512):
     """Render SVG to PNG using CairoSVG."""
@@ -45,7 +46,6 @@ def render_svg_to_png(svg_path, png_output, size=512):
         )
         return True
     except Exception as e:
-        # print(f"Error rendering {svg_path}: {e}")
         return False
 
 def count_paths(svg_path):
@@ -166,17 +166,100 @@ def create_composite_image(original_path, vectorized_path, output_path):
         final_comp.paste(comp2, (size[0], 0))
         final_comp.paste(diff_img, (size[0] * 2, 0))
         
-        # Add labels (optional, skipping for clean look)
-        
         final_comp.save(output_path)
         return True
     except Exception as e:
         print(f"Error creating composite: {e}")
         return False
 
+# --- Worker Function ---
+
+def process_image(args):
+    """
+    Worker function to process a single image.
+    args: (filename, set_name, png_dir, svg_dir, dirs, quality, colors)
+    """
+    filename, set_name, png_dir, svg_dir, dirs, quality, colors = args
+    
+    name = Path(filename).stem
+    input_png = png_dir / filename
+    gt_svg = svg_dir / f"{name}.svg"
+    
+    # Copy input
+    shutil.copy2(input_png, dirs["input"] / filename)
+    if gt_svg.exists():
+        shutil.copy2(gt_svg, dirs["ground_truth"] / f"{name}.svg")
+    
+    output_svg = dirs["output"] / f"{name}.svg"
+    
+    # Run Vectalab
+    cmd = ["vectalab", "logo", str(input_png), str(output_svg), "--quality", quality]
+    if colors:
+        cmd.extend(["--colors", str(colors)])
+    
+    start_time = time.time()
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+        duration = time.time() - start_time
+    except subprocess.CalledProcessError as e:
+        return {"error": f"Vectalab failed: {e.stderr.decode()}", "name": name}
+        
+    # Render for comparison
+    out_png = dirs["rendered"] / f"{name}_out.png"
+    gt_png = dirs["rendered"] / f"{name}_gt.png"
+    
+    if not render_svg_to_png(output_svg, out_png):
+        return {"error": "Failed to render output SVG", "name": name}
+        
+    # Reference handling
+    ref_png = gt_png
+    if gt_svg.exists():
+        if not render_svg_to_png(gt_svg, gt_png):
+            ref_png = input_png # Fallback
+    else:
+        ref_png = input_png
+        
+    # Calculate Metrics
+    try:
+        img_ref = Image.open(ref_png).convert('RGB')
+        img_out = Image.open(out_png).convert('RGB')
+        
+        if img_ref.size != img_out.size:
+            img_out = img_out.resize(img_ref.size)
+        
+        arr_ref = np.array(img_ref)
+        arr_out = np.array(img_out)
+        
+        s = ssim(arr_ref, arr_out, channel_axis=2, data_range=255) * 100
+        topo = calculate_topology_score(arr_ref, arr_out)
+        edge = calculate_edge_accuracy(arr_ref, arr_out)
+        de = calculate_color_error(arr_ref, arr_out)
+        paths = count_paths(output_svg)
+        
+        # Create Composite
+        comp_filename = f"{name}_comp.jpg"
+        comp_path = dirs["composites"] / comp_filename
+        create_composite_image(ref_png, out_png, comp_path)
+        
+        return {
+            "icon": name,
+            "set": set_name,
+            "ssim": s,
+            "topology": topo,
+            "edge": edge,
+            "delta_e": de,
+            "paths": paths,
+            "time": duration,
+            "composite_path": f"composites/{comp_filename}",
+            "svg_path": f"output/{name}.svg"
+        }
+        
+    except Exception as e:
+        return {"error": f"Error calculating metrics: {e}", "name": name}
+
 # --- Main Session Logic ---
 
-def run_session(sets, quality="ultra", colors=None):
+def run_session(sets, quality="ultra", colors=None, max_workers=None):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     session_dir = TEST_RUNS_DIR / timestamp
     
@@ -193,10 +276,9 @@ def run_session(sets, quality="ultra", colors=None):
         
     print(f"🚀 Starting SOTA Session: {timestamp}")
     print(f"📂 Session Directory: {session_dir}")
-    print(f"⚙️  Settings: Quality={quality}, Colors={colors if colors else 'Auto'}")
+    print(f"⚙️  Settings: Quality={quality}, Colors={colors if colors else 'Auto'}, Workers={max_workers if max_workers else 'Auto'}")
     
-    results = []
-    
+    tasks = []
     for set_name in sets:
         png_dir = TEST_DATA_DIR / f"png_{set_name}"
         svg_dir = TEST_DATA_DIR / f"svg_{set_name}"
@@ -205,95 +287,35 @@ def run_session(sets, quality="ultra", colors=None):
             print(f"⚠️  Warning: {png_dir} does not exist. Skipping.")
             continue
             
-        print(f"\nProcessing set: {set_name}")
-        
         files = sorted([f for f in os.listdir(png_dir) if f.endswith('.png')])
-        
         for filename in files:
-            name = Path(filename).stem
-            input_png = png_dir / filename
-            gt_svg = svg_dir / f"{name}.svg"
+            tasks.append((filename, set_name, png_dir, svg_dir, dirs, quality, colors))
             
-            # Copy input
-            shutil.copy2(input_png, dirs["input"] / filename)
-            if gt_svg.exists():
-                shutil.copy2(gt_svg, dirs["ground_truth"] / f"{name}.svg")
+    print(f"📋 Found {len(tasks)} images to process.")
+    
+    results = []
+    
+    # Parallel Processing
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+        future_to_task = {executor.submit(process_image, task): task for task in tasks}
+        
+        completed = 0
+        total = len(tasks)
+        
+        for future in concurrent.futures.as_completed(future_to_task):
+            task = future_to_task[future]
+            name = Path(task[0]).stem
+            completed += 1
             
-            output_svg = dirs["output"] / f"{name}.svg"
-            
-            # Run Vectalab
-            cmd = ["vectalab", "logo", str(input_png), str(output_svg), "--quality", quality]
-            if colors:
-                cmd.extend(["--colors", str(colors)])
-            
-            print(f"  • {name}...", end="", flush=True)
-            start_time = time.time()
             try:
-                subprocess.run(cmd, check=True, capture_output=True)
-                duration = time.time() - start_time
-                print(f" Done ({duration:.2f}s)")
-            except subprocess.CalledProcessError as e:
-                print(f" Failed! {e.stderr.decode()}")
-                continue
-                
-            # Render for comparison
-            out_png = dirs["rendered"] / f"{name}_out.png"
-            gt_png = dirs["rendered"] / f"{name}_gt.png"
-            
-            if not render_svg_to_png(output_svg, out_png):
-                print("    Failed to render output SVG")
-                continue
-                
-            # If GT exists, render it. If not, use input PNG as reference (less ideal for topology but ok for visual)
-            # Actually, for SOTA metrics we usually compare against the original raster if we don't have a GT SVG,
-            # but here we have GT SVGs for the test sets.
-            # If GT SVG is missing, we can compare against the input PNG directly.
-            
-            ref_png = gt_png
-            if gt_svg.exists():
-                if not render_svg_to_png(gt_svg, gt_png):
-                    print("    Failed to render GT SVG")
-                    ref_png = input_png # Fallback
-            else:
-                ref_png = input_png
-                
-            # Calculate Metrics
-            try:
-                img_ref = Image.open(ref_png).convert('RGB')
-                img_out = Image.open(out_png).convert('RGB')
-                
-                if img_ref.size != img_out.size:
-                    img_out = img_out.resize(img_ref.size)
-                
-                arr_ref = np.array(img_ref)
-                arr_out = np.array(img_out)
-                
-                s = ssim(arr_ref, arr_out, channel_axis=2, data_range=255) * 100
-                topo = calculate_topology_score(arr_ref, arr_out)
-                edge = calculate_edge_accuracy(arr_ref, arr_out)
-                de = calculate_color_error(arr_ref, arr_out)
-                paths = count_paths(output_svg)
-                
-                # Create Composite
-                comp_filename = f"{name}_comp.jpg"
-                comp_path = dirs["composites"] / comp_filename
-                create_composite_image(ref_png, out_png, comp_path)
-                
-                results.append({
-                    "icon": name,
-                    "set": set_name,
-                    "ssim": s,
-                    "topology": topo,
-                    "edge": edge,
-                    "delta_e": de,
-                    "paths": paths,
-                    "time": duration,
-                    "composite_path": f"composites/{comp_filename}",
-                    "svg_path": f"output/{name}.svg"
-                })
-                
-            except Exception as e:
-                print(f"    Error calculating metrics: {e}")
+                res = future.result()
+                if "error" in res:
+                    print(f"[{completed}/{total}] ❌ {name}: {res['error']}")
+                else:
+                    print(f"[{completed}/{total}] ✅ {name} ({res['time']:.2f}s)")
+                    results.append(res)
+            except Exception as exc:
+                print(f"[{completed}/{total}] ❌ {name} generated an exception: {exc}")
 
     # Generate Report
     if results:
@@ -338,7 +360,8 @@ if __name__ == "__main__":
     parser.add_argument("--sets", nargs="+", default=["mono", "multi", "complex"], help="Test sets to run (mono, multi, complex)")
     parser.add_argument("--quality", default="ultra", help="Vectalab quality setting")
     parser.add_argument("--colors", type=int, help="Force number of colors")
+    parser.add_argument("--workers", type=int, default=None, help="Max number of parallel workers")
     
     args = parser.parse_args()
     
-    run_session(args.sets, args.quality, args.colors)
+    run_session(args.sets, args.quality, args.colors, args.workers)
