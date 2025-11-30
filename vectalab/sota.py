@@ -27,6 +27,9 @@ import tempfile
 import os
 import re
 import xml.etree.ElementTree as ET
+import shutil
+import concurrent.futures
+import time
 
 # Try imports
 try:
@@ -775,6 +778,129 @@ def vectorize_icon(
         max_iterations=4,
         verbose=verbose,
     )
+
+
+def _run_strategy_wrapper(strategy):
+    """Helper to run a strategy in a separate process."""
+    try:
+        start = time.time()
+        out_path, metrics = strategy["func"](*strategy["args"], **strategy["kwargs"])
+        duration = time.time() - start
+        metrics["strategy"] = strategy["name"]
+        metrics["duration"] = duration
+        metrics["path"] = out_path
+        return metrics
+    except Exception as e:
+        # Return error with traceback for debugging
+        import traceback
+        return {"strategy": strategy["name"], "error": f"{str(e)}\n{traceback.format_exc()}"}
+
+
+def vectorize_auto(
+    input_path: str,
+    output_path: str,
+    target_ssim: float = 0.95,
+    max_workers: int = 4,
+    verbose: bool = True,
+) -> Tuple[str, Dict[str, Any]]:
+    """
+    Auto mode: Run multiple strategies in parallel and pick the best one.
+    
+    Strategies:
+    1. Logo Clean (Ultra)
+    2. Premium Logo
+    3. Premium Photo
+    4. Smart Adaptive
+    
+    Args:
+        input_path: Path to input image
+        output_path: Path for output SVG
+        target_ssim: Target SSIM quality
+        max_workers: Number of parallel workers
+        verbose: Print progress
+        
+    Returns:
+        Tuple of (output_path, metrics_dict)
+    """
+    from vectalab.quality import vectorize_logo_clean
+    from vectalab.premium import vectorize_logo_premium, vectorize_photo_premium
+    
+    if verbose:
+        print(f"🚀 Starting Auto Mode with {max_workers} workers...")
+        
+    # Create temporary directory for candidates
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        
+        # Define strategies
+        strategies = [
+            {
+                "name": "Logo Clean (Ultra)",
+                "func": vectorize_logo_clean,
+                "args": (input_path, str(temp_path / "logo_clean.svg")),
+                "kwargs": {"quality_preset": "ultra", "verbose": False}
+            },
+            {
+                "name": "Premium Logo",
+                "func": vectorize_logo_premium,
+                "args": (input_path, str(temp_path / "premium_logo.svg")),
+                "kwargs": {"precision": 2, "verbose": False}
+            },
+            {
+                "name": "Premium Photo",
+                "func": vectorize_photo_premium,
+                "args": (input_path, str(temp_path / "premium_photo.svg")),
+                "kwargs": {"n_colors": 32, "verbose": False}
+            },
+            {
+                "name": "Smart Adaptive",
+                "func": vectorize_smart,
+                "args": (input_path, str(temp_path / "smart.svg")),
+                "kwargs": {"target_ssim": target_ssim, "verbose": False}
+            }
+        ]
+        
+        results = []
+        
+        # Use ProcessPoolExecutor for CPU-bound tasks
+        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+            future_to_strat = {executor.submit(_run_strategy_wrapper, s): s for s in strategies}
+            
+            for future in concurrent.futures.as_completed(future_to_strat):
+                res = future.result()
+                if "error" not in res:
+                    results.append(res)
+                    if verbose:
+                        print(f"  ✅ {res['strategy']}: SSIM={res.get('ssim', 0)*100:.1f}%, Size={res.get('file_size', 0)/1024:.1f}KB")
+                else:
+                    if verbose:
+                        print(f"  ❌ {res['strategy']} failed: {res['error'].splitlines()[0]}")
+
+        if not results:
+            raise RuntimeError("All strategies failed.")
+            
+        # Select best result
+        # Scoring: SSIM * 100 - (Size in KB / 100)
+        # We prioritize SSIM but penalize large files slightly
+        
+        def score_result(r):
+            ssim_val = r.get('ssim', 0) * 100
+            size_kb = r.get('file_size', 0) / 1024
+            # Penalty: 1 point per 100KB
+            penalty = size_kb / 100
+            return ssim_val - penalty
+            
+        best_result = max(results, key=score_result)
+        
+        if verbose:
+            print(f"\n🏆 Winner: {best_result['strategy']}")
+            print(f"   SSIM: {best_result.get('ssim', 0)*100:.2f}%")
+            print(f"   Size: {best_result.get('file_size', 0)/1024:.1f} KB")
+            
+        # Copy winner to output
+        shutil.copy2(best_result['path'], output_path)
+        
+        return output_path, best_result
 
 
 # ============================================================================

@@ -193,7 +193,13 @@ def process_image(args):
     output_svg = dirs["output"] / f"{name}.svg"
     
     # Run Vectalab
-    cmd = ["vectalab", "logo", str(input_png), str(output_svg), "--quality", quality]
+    if set_name == "complex":
+        # Use premium photo mode for complex images
+        cmd = ["vectalab", "premium", str(input_png), str(output_svg), "--mode", "photo", "--quality", "0.95"]
+    else:
+        # Use logo mode for standard sets
+        cmd = ["vectalab", "logo", str(input_png), str(output_svg), "--quality", quality]
+        
     if colors:
         cmd.extend(["--colors", str(colors)])
     
@@ -341,6 +347,11 @@ def run_session(sets, quality="ultra", colors=None, max_workers=None):
         report_path = session_dir / "report.html"
         with open(report_path, "w") as f:
             f.write(html_out)
+
+        # Save raw results to JSON
+        json_path = session_dir / "results.json"
+        with open(json_path, "w") as f:
+            json.dump(results, f, indent=2)
             
         print(f"\n✅ Session Complete!")
         print(f"📊 Summary:")

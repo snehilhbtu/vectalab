@@ -1696,6 +1696,136 @@ def smart(
         raise typer.Exit(1)
 
 
+@app.command("auto", rich_help_panel="Commands")
+def auto(
+    input_file: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to input image (PNG, JPG, etc.)",
+            show_default=False,
+        )
+    ],
+    output_file: Annotated[
+        Optional[Path],
+        typer.Argument(
+            help="Path for output SVG [dim](default: input_name.svg)[/]",
+            show_default=False,
+        )
+    ] = None,
+    target_ssim: Annotated[
+        float,
+        typer.Option(
+            "--quality", "-q",
+            help="Minimum SSIM quality (0.0-1.0)",
+            min=0.5,
+            max=1.0,
+            rich_help_panel="Quality Options",
+        )
+    ] = 0.95,
+    workers: Annotated[
+        int,
+        typer.Option(
+            "--workers", "-w",
+            help="Number of parallel workers",
+            min=1,
+            max=16,
+            rich_help_panel="Performance Options",
+        )
+    ] = 4,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose", "-v",
+            help="Show detailed progress information",
+        )
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force", "-f",
+            help="Overwrite output file if it exists",
+        )
+    ] = False,
+):
+    """
+    🤖 Auto mode: Run multiple strategies in parallel and pick the best one.
+    
+    This command runs 4 different vectorization strategies simultaneously:
+    1. Logo Clean (Ultra)
+    2. Premium Logo
+    3. Premium Photo
+    4. Smart Adaptive
+    
+    It then selects the best result based on a balance of SSIM quality and file size.
+    
+    [bold]Examples:[/]
+    
+      [dim]# Run auto optimization[/]
+      $ vectalab auto image.png
+      
+      [dim]# Use more workers for faster results[/]
+      $ vectalab auto image.png -w 8
+    """
+    # Validate input
+    input_path = validate_input_file(input_file)
+    
+    # Generate output path if not specified
+    if output_file is None:
+        output_file = input_path.with_suffix('.svg')
+    output_path = validate_output_file(output_file)
+    
+    # Check if output exists
+    if output_path.exists() and not force:
+        overwrite = typer.confirm(
+            f"Output file {output_path} already exists. Overwrite?",
+            default=False
+        )
+        if not overwrite:
+            console.print("[yellow]Operation cancelled.[/]")
+            raise typer.Exit(0)
+    
+    show_banner()
+    
+    # Show info
+    info_table = Table(box=box.ROUNDED, show_header=False, border_style="dim")
+    info_table.add_column("Property", style="cyan")
+    info_table.add_column("Value")
+    info_table.add_row("📁 Input", str(input_path))
+    info_table.add_row("📄 Output", str(output_path))
+    info_table.add_row("🤖 Mode", "Auto (Parallel Competition)")
+    info_table.add_row("⚡ Workers", str(workers))
+    console.print(info_table)
+    console.print()
+    
+    try:
+        from vectalab.sota import vectorize_auto
+        
+        with console.status("[cyan]Running parallel strategies...[/]"):
+            svg_path, metrics = vectorize_auto(
+                str(input_path),
+                str(output_path),
+                target_ssim=target_ssim,
+                max_workers=workers,
+                verbose=verbose,
+            )
+        
+        # Show results
+        _show_smart_results(output_path, metrics)
+        
+    except ImportError as e:
+        error_console.print(f"❌ Missing dependency: {e}")
+        error_console.print("Install with: pip install vtracer cairosvg scikit-image")
+        raise typer.Exit(1)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]⚠️ Operation cancelled by user.[/]")
+        raise typer.Exit(130)
+    except Exception as e:
+        error_console.print(f"❌ Conversion failed: {e}")
+        if verbose:
+            console.print_exception()
+        raise typer.Exit(1)
+
+
 def _show_smart_results(output_path: Path, metrics: dict):
     """Display smart conversion results."""
     size_bytes = metrics.get('file_size', output_path.stat().st_size)
