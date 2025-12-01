@@ -1,6 +1,0 @@
-<svg width="256" height="256" version="1.1" xmlns="http://www.w3.org/2000/svg">
- <path transform="translate(134,134)" d="m0 0h122v122h-122v-122z" fill="#fabc09" _primitive_attrs="{'x': 1.52587890625e-05, 'y': 0.0, 'width': 121.99998474121094, 'height': 121.99998474121094}" _primitive_type="rect"/>
- <path transform="translate(0,134)" d="m0 0h122v122h-122v-122z" fill="#00adef" _primitive_attrs="{'x': 1.52587890625e-05, 'y': 0.0, 'width': 121.99998474121094, 'height': 121.99998474121094}" _primitive_type="rect"/>
- <path transform="translate(134)" d="m0 0h122v122h-122v-122z" fill="#80cb28" _primitive_attrs="{'x': 1.52587890625e-05, 'y': 0.0, 'width': 121.99998474121094, 'height': 121.99998474121094}" _primitive_type="rect"/>
- <path transform="translate(0)" d="m0 0h122v122h-122v-122z" fill="#f1511b" _primitive_attrs="{'x': 1.52587890625e-05, 'y': 0.0, 'width': 121.99998474121094, 'height': 121.99998474121094}" _primitive_type="rect"/>
-</svg>
