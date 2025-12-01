@@ -1,8 +1,21 @@
 """
-This script was archived & moved to `scripts/archived/run_vectalab_test.py`.
+ARCHIVED: ad-hoc test harness
 
-If you need to restore the original, retrieve it from `scripts/archived/` and move it back.
+Moved to archived — small, focused test runner that duplicates other test flows.
 """
+
+#!/usr/bin/env python3
+"""
+Run Vectalab vectorization on test PNGs and measure performance.
+"""
+
+import os
+import subprocess
+import time
+import json
+from pathlib import Path
+
+def run_vectalab(input_png, output_svg, quality="balanced", mode="logo"):
     """Run Vectalab on a PNG file and return execution time."""
     start_time = time.time()
     try:
@@ -17,14 +30,6 @@ If you need to restore the original, retrieve it from `scripts/archived/` and mo
             "--target", "0.998",
             "--force"
         ]
-        
-        # Add mode specific arguments if needed, though 'convert' is the command
-        # If there is a specific 'logo' mode flag for the CLI, add it here.
-        # The protocol mentions `vectalab logo ...` but the script uses `vectalab convert`.
-        # I'll stick to `convert` but maybe add flags if I knew them.
-        # The protocol says: `vectalab logo test_data/png_multi/brand.png ...`
-        # Let's check if `vectalab logo` is a valid command.
-        # For now I'll stick to the previous command structure but maybe add comments.
         
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         duration = time.time() - start_time

@@ -1,8 +1,23 @@
 """
-This script was archived & moved to `scripts/archived/run_full_sota_test.py`.
+ARCHIVED: full SOTA test runner (modal)
 
-If you need to restore the original, retrieve it from `scripts/archived/` and move it back.
+This script uses Modal/cloud-run specifics and was archived because it has been superseded by newer test harnesses.
 """
+
+#!/usr/bin/env python3
+"""
+Full test suite execution using SAM method with Modal cloud offloading.
+"""
+
+import sys
+import os
+import modal
+from pathlib import Path
+
+# Add project root to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from vectalab.core import Vectalab
 
 def vectorize_icon(input_png, output_svg, vl):
     """Vectorize using the provided Vectalab instance."""

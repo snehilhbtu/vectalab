@@ -123,6 +123,11 @@ See [Modal Setup Guide](docs/modal_setup.md) for details.
 - [Cloud Setup](docs/modal_setup.md) - Modal integration guide
  - [Model Weights & Download Instructions](docs/MODELS.md) - where to get large model files and how to place them in the repo
 
+<!-- housekeeping note -->
+## Scripts cleanup
+
+Some older, ad-hoc testing/analysis scripts were moved into `scripts/archived/` to keep the main `scripts/` directory concise. See `scripts/README.md` for details on which tools live in `scripts/` vs. `scripts/archived/`.
+
 
 ## Architecture
 

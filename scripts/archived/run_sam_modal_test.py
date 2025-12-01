@@ -1,8 +1,23 @@
 """
-This script was archived & moved to `scripts/archived/run_full_sota_test.py`.
+ARCHIVED: modal-based SAM test runner
 
-If you need to restore the original, retrieve it from `scripts/archived/` and move it back.
+Script archived because it duplicates newer test harnesses and is cloud-specific.
 """
+
+#!/usr/bin/env python3
+"""
+Full test suite execution using SAM method with Modal cloud offloading.
+"""
+
+import sys
+import os
+import modal
+from pathlib import Path
+
+# Add project root to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from vectalab.core import Vectalab
 
 def vectorize_icon(input_png, output_svg, vl):
     """Vectorize using the provided Vectalab instance."""
@@ -28,22 +43,33 @@ def main():
     # Enable Modal logs
     # modal.enable_output() # Optional: enable if debugging is needed
     
-    # Subset for rapid iteration
-    test_set_mono = ['circle.png', 'star.png', 'camera.png']
-    test_set_multi = ['google.png', 'github.png', 'apple.png']
+    # Full test set from protocol
+    test_set_mono = [
+        'circle.png', 'square.png', 'triangle.png', 'star.png', 'heart.png', 
+        'user.png', 'home.png', 'search.png', 'settings.png', 'camera.png', 
+        'cloud.png', 'sun.png', 'moon.png', 'wind.png', 'cloud-rain.png', 
+        'coffee.png', 'code.png', 'terminal.png', 'cpu.png', 'database.png'
+    ]
     
-    print("Initializing Vectalab with SOTA (HiFi) method...")
+    test_set_multi = [
+        'github.png', 'twitter.png', 'facebook.png', 'instagram.png', 'youtube.png', 
+        'linkedin.png', 'google.png', 'apple.png', 'microsoft.png', 'amazon.png', 
+        'slack.png', 'spotify.png', 'netflix.png', 'airbnb.png', 'dropbox.png', 
+        'trello.png', 'atlassian.png', 'jira.png', 'bitbucket.png', 'gitlab.png'
+    ]
+    
+    print("Initializing Vectalab with SAM (Modal) method...")
     try:
-        # Initialize Vectalab with SOTA method
+        # Initialize Vectalab once to reuse the Modal app session if possible
+        # Note: The current implementation creates a new app run for each segmentation call
+        # but the object initialization happens here.
         vl = Vectalab(
-            method="sota", # Changed from "bayesian" to "sota" to use VTracer
-            model_type="vit_h",
-            device="cpu",
-            use_modal=False # SOTA method runs locally
+            method="bayesian", # Using Bayesian method which uses SAM for initialization
+            model_type="vit_h", 
+            use_modal=True,
+            device="cpu" # Local device for non-SAM parts
         )
     except Exception as e:
-        print(f"Failed to initialize Vectalab: {e}")
-        return
         print(f"Failed to initialize Vectalab: {e}")
         return
 

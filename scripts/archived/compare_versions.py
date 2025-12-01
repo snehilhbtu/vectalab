@@ -1,8 +1,11 @@
 """
-This script was archived & moved to `scripts/archived/compare_versions.py`.
+ARCHIVED: historic comparison helper
 
-If you need to restore the original, retrieve it from `scripts/archived/` and move it back.
+This script compared older/fixed SVG outputs to an original JPEG — kept here for historical debugging.
 """
+
+#!/usr/bin/env python3
+"""Compare old vs new SVG output quality."""
 
 import cv2
 import numpy as np

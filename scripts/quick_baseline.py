@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
 """
-Quick vectorization of selected icons for baseline testing.
-Uses faster settings for quick turnaround.
+This script was archived & moved to `scripts/archived/quick_baseline.py`.
+
+If you need to restore the original, retrieve it from `scripts/archived/` and move it back.
 """
 
 import os

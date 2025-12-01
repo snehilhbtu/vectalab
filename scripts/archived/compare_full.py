@@ -1,7 +1,12 @@
 """
-This script was archived & moved to `scripts/archived/compare_full.py`.
+ARCHIVED: result comparison helper
 
-If you need to restore the original, retrieve it from `scripts/archived/` and move it back.
+This utility compared rendered SVG outputs vs. PNG inputs — useful for early experiments but duplicated by newer benchmarking tooling.
+"""
+
+#!/usr/bin/env python3
+"""
+Compare subset of results.
 """
 
 import os
