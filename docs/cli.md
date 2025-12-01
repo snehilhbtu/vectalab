@@ -1,57 +1,52 @@
-# CLI Reference
+# CLI Reference — quick, accurate
 
-## Commands Overview
+This page is a concise reference for the commands that matter for most users. The full, in-code help (CLI flags/descriptions) remains authoritative — run `vectalab <command> --help` to see exact options.
 
-| Command | Purpose | Best For |
-|---------|---------|----------|
-| `premium` | SOTA vectorization + SVGO | **Recommended default** |
-| `optimize` | Compress existing SVG | Already have SVG |
-| `convert` | Basic vectorization | Quick conversion |
-| `logo` | Logo-optimized | Flat logos, icons |
-| `smart` | Auto size-quality balance | Batch processing |
-| `svgo-info` | Check SVGO status | Troubleshooting |
+Core commands:
+
+- convert — general-purpose raster→SVG converter (default method: hifi). Good for balanced quality and speed.
+- premium — SOTA quality with 80/20 optimizations (SVGO, precision tuning, shape detection). Best for production-grade results.
+- logo — focused palette reduction and simplification for logos/icons.
+- optimize — compress an existing SVG using SVGO and precision reduction.
+- smart / auto — multi-strategy runners: `smart` targets a size/quality, `auto` runs multiple strategies and picks the best.
+
+Quick decision map (one-line):
+
+• I have a PNG/JPG → `convert` (fast) or `premium` (highest quality + SVGO)
+
+• I have an SVG → `optimize`
+
+• I need to batch/auto-select the best result → `smart` or `auto`
 
 ---
 
-## `vectalab premium` ⭐ Recommended
+## Example usage (most common)
 
-State-of-the-art vectorization with 80/20 optimizations.
+vectalab convert image.png                   # general conversion (default hifi)
+vectalab premium image.png                   # highest-quality production path (SVGO, precision)
+vectalab logo icon.png -c 8                  # logo-optimized (forces palette size)
+vectalab optimize icon.svg -p 1              # aggressively reduce precision and size
+vectalab smart batch.png -s 50               # iterate to reach a target size
 
-```bash
-vectalab premium <input> [output] [options]
-```
+All commands are self-documenting; run `vectalab <command> --help` to see exact flags and defaults.
 
-### Options
+Notes/flags to remember
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--target-ssim, -t` | 0.98 | Target SSIM (0.90-1.0) |
-| `--precision, -p` | 2 | Coordinate decimals (1=smallest, 8=precise) |
-| `--svgo/--no-svgo` | enabled | Apply SVGO optimization |
-| `--shapes/--no-shapes` | disabled | Detect shape primitives |
-| `--lab/--no-lab` | enabled | Use LAB color metrics |
-| `--mode, -m` | auto | Force mode: `logo`, `photo`, `auto` |
-| `--colors, -c` | auto | Force palette size (4-64) |
+- --target-ssim / -t: controls the quality goal (0.90–1.0). For `convert` the CLI default target is 0.998; `premium` defaults to 0.98.
+- --precision / -p: coordinate decimals (1–8). Lower reduces file size; 2 is a good default balance.
+- --svgo/--no-svgo: premium + optimize rely on SVGO for major size savings — requires Node.js + svgo package.
+- --colors / -c: force palette size for logo/photo flows.
 
-### Examples
+Developer note: the CLI is implemented in `vectalab/cli.py` — keep this file as the authoritative reference for available options and behavior.
 
-```bash
-# Basic (auto-detect everything)
-vectalab premium logo.png
+Troubleshooting quick tips
 
-# Maximum compression
-vectalab premium icon.png -p 1 --mode logo
-
-# Photo with more colors
-vectalab premium photo.jpg --mode photo -c 32
-
-# Skip SVGO (if not installed)
-vectalab premium image.png --no-svgo
-```
+- SVGO not found: run `vectalab svgo-info` to check environment and install instructions.
+- If conversion fails due to missing libs, check that `vtracer`, `cairosvg`, and `scikit-image` are installed.
 
 ### Output Metrics
 
-```
+```text
 Quality (SSIM RGB):  97.65% ✅
 Quality (SSIM LAB):  97.86%
 Color Accuracy (ΔE): 0.93 (Imperceptible)
@@ -59,7 +54,8 @@ File Size:           2.5 KB
 Size Reduction:      77.6%
 ```
 
-**Delta E interpretation:**
+- **Delta E interpretation:**
+
 - < 1: Imperceptible (excellent)
 - 1-2: Barely perceptible (good)
 - 2-5: Noticeable on close inspection
@@ -86,7 +82,7 @@ vectalab optimize <input.svg> [output.svg] [options]
 ✅ RIGHT: existing SVG → optimize → smaller SVG
 ```
 
-### Options
+### optimize — Options
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -113,7 +109,7 @@ Basic high-fidelity vectorization.
 vectalab convert <input> [output] [options]
 ```
 
-### Options
+### convert — Options
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -141,7 +137,7 @@ Optimized for flat logos and icons.
 vectalab logo <input> [output] [options]
 ```
 
-### Options
+### logo — Options
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -159,7 +155,7 @@ Auto-balance between file size and quality.
 vectalab smart <input> [output] [options]
 ```
 
-### Options
+### smart — Options
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -179,7 +175,7 @@ vectalab info <file>
 
 ### Output
 
-```
+```text
 📊 Image Analysis
 ├── Dimensions: 400×200
 ├── Colors: 3 unique
@@ -220,7 +216,7 @@ vectalab svgo-info
 
 ### Output (when installed)
 
-```
+```text
 ╭─────────┬─────────────┬──────────╮
 │ Node.js │ ✓ Installed │ v20.18.1 │
 │ SVGO    │ ✓ Installed │ v4.0.0   │

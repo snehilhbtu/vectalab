@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="240" viewBox="0 0 900 240">
+  <style>
+    .box { fill: #0f1724; stroke: #c7d2fe; stroke-width: 1.5px; rx: 8px; }
+    .label { fill: #e6eef6; font-family: Inter, Arial, sans-serif; font-size: 12px; }
+    .title { fill: #a78bfa; font-weight: 700; font-size: 14px }
+    .arrow { stroke: #93c5fd; stroke-width: 2px; fill: none; marker-end: url(#arrowhead);} 
+  </style>
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <path d="M0,0 L10,3.5 L0,7 z" fill="#93c5fd" />
+    </marker>
+  </defs>
+
+  <rect x="20" y="40" width="150" height="120" class="box"/>
+  <text x="95" y="70" class="label" text-anchor="middle">Input</text>
+  <text x="95" y="90" class="label" text-anchor="middle">PNG / JPG / SVG</text>
+
+  <rect x="210" y="20" width="180" height="160" class="box"/>
+  <text x="300" y="50" class="title" text-anchor="middle">Analysis & Preprocess</text>
+  <text x="300" y="80" class="label" text-anchor="middle">type detection • palette • denoise</text>
+  <text x="300" y="100" class="label" text-anchor="middle">shape detection • quantization</text>
+
+  <rect x="435" y="40" width="170" height="120" class="box"/>
+  <text x="520" y="70" class="title" text-anchor="middle">Vectorization</text>
+  <text x="520" y="95" class="label" text-anchor="middle">vtracer / HiFi / SAM / Bayesian</text>
+  <text x="520" y="115" class="label" text-anchor="middle">path gen • smoothing • merging</text>
+
+  <rect x="655" y="40" width="160" height="120" class="box"/>
+  <text x="735" y="70" class="title" text-anchor="middle">Optimizations</text>
+  <text x="735" y="95" class="label" text-anchor="middle">precision reduction • SVGO</text>
+  <text x="735" y="115" class="label" text-anchor="middle">color snapping • shape primitives</text>
+
+  <path class="arrow" d="M170,100 L210,100"/>
+  <path class="arrow" d="M390,100 L435,100"/>
+  <path class="arrow" d="M605,100 L655,100"/>
+
+  <rect x="350" y="-14" width="200" height="36" fill="#111827" stroke="#60a5fa" rx="8"/>
+  <text x="450" y="10" class="label" text-anchor="middle">Vectalab Pipeline — concise overview</text>
+</svg>

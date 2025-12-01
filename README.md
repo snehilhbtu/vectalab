@@ -73,14 +73,14 @@ vectalab optimize icon.svg
 Run comprehensive benchmarks on your own images to evaluate quality and performance.
 
 ```bash
-# Benchmark a directory of images
-vectalab-benchmark --input-dir ./my_images --mode premium
+# Run the Python benchmark runner (reproducible & auditable)
+python scripts/benchmark_runner.py --input-dir ./my_images --mode premium
 
-# Run standard test sets
-vectalab-benchmark --sets mono multi
+# Run targeted 80/20 optimization checks
+python scripts/benchmark_80_20.py examples/test_logo.png
 
-# Run the Golden Dataset benchmark (Protocol v2)
-vectalab-benchmark --sets golden
+# Run the Golden Dataset using the runner
+python scripts/benchmark_runner.py --input-dir golden_data --mode premium
 ```
 
 ### Python
@@ -108,8 +108,8 @@ print(f"Color accuracy: ΔE={metrics['delta_e']:.2f}")
 
 Vectalab supports offloading heavy segmentation tasks (SAM) to the cloud using [Modal.com](https://modal.com). This enables using the largest models (`vit_h`) on any machine.
 
-1.  **Setup**: `modal setup`
-2.  **Run**: `vectalab convert input.png --method sam --use-modal`
+1. **Setup**: `modal setup`
+2. **Run**: `vectalab convert input.png --method sam --use-modal`
 
 See [Modal Setup Guide](docs/modal_setup.md) for details.
 
@@ -119,12 +119,12 @@ See [Modal Setup Guide](docs/modal_setup.md) for details.
 - [Python API](docs/api.md) - Programmatic usage
 - [Examples](docs/examples.md) - Common workflows
 - [Algorithm](docs/algorithm.md) - Technical details
-- [Benchmark Protocol v2](docs/protocol_v2.md) - Testing methodology
+- [Benchmarks & Protocol](docs/benchmarks.md) - Reproducible benchmarking and scripts
 - [Cloud Setup](docs/modal_setup.md) - Modal integration guide
 
 ## Architecture
 
-```
+```text
 PNG/JPG → Analysis → Preprocessing → vtracer → SVGO → SVG
                 ↓           ↓            ↓        ↓
           Type detect   Color quant   Tracing   Compress
@@ -138,7 +138,7 @@ PNG/JPG → Analysis → Preprocessing → vtracer → SVGO → SVG
 
 ### Core Dependencies
 
-```
+```text
 vtracer      # Rust vectorization engine
 opencv       # Image processing
 scikit-image # Quality metrics

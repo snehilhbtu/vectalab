@@ -1,60 +1,54 @@
-# Vectalab Documentation
+# Vectalab Documentation — concise index
 
-> **Professional High-Fidelity Image Vectorization**  
-> Convert raster images (PNG, JPG) to optimized SVG with 97%+ quality
+Professional, high‑fidelity raster → SVG vectorization. This docs index is intentionally compact and focused: quick start, concise CLI/API reference, architecture overview, and reproducible benchmarks.
 
-## Quick Start
+## Quick start (one-minute)
+
+Install and run a best-effort vectorization with defaults:
 
 ```bash
-# Install
 pip install vectalab
+# raster → compact, high-quality SVG (recommended for photos & complex images)
+vectalab convert image.png
 
-# Install SVGO for best compression (optional but recommended)
-npm install -g svgo
-
-# Vectorize an image
+# recommended fast path for logos/icons (palette reduction + SVGO)
 vectalab premium logo.png
 
-# Optimize existing SVG
-vectalab optimize icon.svg
+# compress an existing SVG
+vectalab optimize file.svg
 ```
 
 ## Documentation Index
 
-| Document | Description |
-|----------|-------------|
-| [CLI Reference](cli.md) | Complete command-line interface guide |
-| [Python API](api.md) | Programmatic usage with Python |
-| [Examples](examples.md) | Common workflows and recipes |
-| [Algorithm](algorithm.md) | Technical deep-dive into vectorization |
-| [Cloud Setup](modal_setup.md) | Modal.com integration for cloud acceleration |
+| Document | Short summary |
+|---|---:|
+| [CLI Reference](cli.md) | Concise, accurate commands & examples — pick a command by use-case |
+| [Python API](api.md) | Stable programmatic entrypoints and quick recipes |
+| [Examples & Recipes](examples.md) | Copy‑pasteable, targeted workflows for users and integrators |
+| [Architecture](algorithm.md) | Short technical overview + diagram (how pieces fit together) |
+| [Benchmarks & Protocol](benchmarks.md) | Reproducible benchmarking (uses scripts/benchmark_runner.py) |
+| [Cloud (Modal)](modal_setup.md) | How to enable remote SAM execution (if needed) |
 
-## Which Command Should I Use?
+## Which command should I run? (short)
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    VECTALAB DECISION TREE                       │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Do you have a raster image (PNG/JPG)?                         │
-│  ├─ YES → Use 'premium' (best quality + smallest files)        │
-│  │        $ vectalab premium image.png                         │
-│  │                                                             │
-│  └─ NO → Do you have an SVG to compress?                       │
-│          ├─ YES → Use 'optimize' (SVGO compression)            │
-│          │        $ vectalab optimize file.svg                 │
-│          │                                                     │
-│          └─ NO → Use 'info' to analyze your file               │
-│                  $ vectalab info file.png                      │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+- You have a raster image (PNG/JPG): use `convert` for general cases; use `premium` for highest quality + SVGO optimizations.
+- You already have an SVG and want to shrink it: use `optimize`.
+- Want multiple strategies and automatic selection? use `auto` or `smart`.
 
-## Key Results
+Suggested quick mapping:
 
-| Metric | Typical Value |
-|--------|---------------|
-| File size reduction | 70-80% vs baseline |
-| SSIM quality | 97-99% |
-| Delta E (color accuracy) | < 1 (imperceptible) |
-| Processing time | 0.2-2s per image |
+- raster → vectalab convert (method=hifi by default) or vectalab premium (SOTA + SVGO)
+- svg → vectalab optimize
+- logos/icons → vectalab logo or vectalab premium --mode logo
+
+For the full CLI reference and targeted examples see [CLI Reference](cli.md) and [Examples & Recipes](examples.md).
+
+## Pragmatic expectations
+
+These are typical, not guaranteed. Real results depend on input complexity and chosen presets.
+
+- SSIM quality (RGB): high-quality presets aim for ≥ 0.99; premium defaults target 0.98.
+- Delta‑E (color): usually under 2 for high-quality presets (perceptually near-exact colors).
+- Typical file-size reductions: 30–80% depending on input and SVGO use.
+
+If you need reproducible evaluation, use the benchmark scripts (see [Benchmarks & Protocol](benchmarks.md)).

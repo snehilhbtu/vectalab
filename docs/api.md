@@ -1,51 +1,23 @@
-# Python API Reference
+# Python API — concise reference
 
-## Quick Reference
-
-```python
-# Most common usage
-from vectalab import vectorize_premium
-svg_path, metrics = vectorize_premium("input.png", "output.svg")
-
-# Optimize existing SVG
-from vectalab import optimize_with_svgo
-optimized_svg, metrics = optimize_with_svgo(svg_content)
-```
+The Python package exposes stable, high-level entrypoints for the most common flows. The examples below are intentional minimal working calls — pass additional keyword args to tune behavior.
 
 ---
 
-## Premium Vectorization (Recommended)
+## Key functions (what you will use)
 
-### `vectorize_premium`
+vectorize_premium(input_path, output_path, *, target_ssim=0.98, max_iterations=5, n_colors=None, use_svgo=True, precision=2, detect_shapes=False, use_lab_metrics=True, verbose=True)
 
-State-of-the-art vectorization with all optimizations.
+- High-level production path: edge-aware preprocessing + iterative refinement + optional SVGO post‑processing.
+- Returns: (output_path, metrics: dict) — metrics contains ssim, delta_e, path_count, file_size, and optimization details.
 
-```python
-from vectalab import vectorize_premium
+vectorize_logo_premium(input_path, output_path, *, use_svgo=True, precision=2, detect_shapes=True, verbose=False)
 
-svg_path, metrics = vectorize_premium(
-    input_path: str,
-    output_path: str,
-    target_ssim: float = 0.98,
-    max_iterations: int = 5,
-    n_colors: int = None,        # Auto-detect if None
-    use_svgo: bool = True,
-    precision: int = 2,
-    detect_shapes: bool = False,
-    use_lab_metrics: bool = True,
-    verbose: bool = False,
-)
-```
+- For logos/icons: stricter palette reduction and simpler paths; lower file size for similar perceived quality.
 
-**Returns:** `Tuple[str, Dict]`
-- `str`: Output file path
-- `Dict`: Metrics with keys:
-  - `ssim`: RGB SSIM (0-1)
-  - `ssim_lab`: LAB SSIM (0-1)
-  - `delta_e`: Color accuracy (lower is better)
-  - `file_size`: Output size in bytes
-  - `path_count`: Number of SVG paths
-  - `optimizations`: Applied optimizations
+vectorize_photo_premium(input_path, output_path, *, n_colors=32, use_svgo=True, precision=2, verbose=False)
+
+- Tuned defaults for photo-like inputs with larger palette. Use n_colors to control palette size.
 
 **Example:**
 ```python
@@ -55,59 +27,20 @@ print(f"Size: {metrics['file_size']/1024:.1f} KB")
 print(f"Color accuracy: ΔE={metrics['delta_e']:.2f}")
 ```
 
-### `vectorize_logo_premium`
+vectorize_high_fidelity(input_path, output_path, *, preset='ultra', optimize=True, verbose=True)
 
-Optimized for logos and icons.
+- Low-level, high-quality iterative pipeline used by `convert --method hifi`.
 
-```python
-from vectalab import vectorize_logo_premium
+optimize_with_svgo(svg_content: str, *, precision=2, multipass=True) -> (optimized_svg, metrics)
 
-svg_path, metrics = vectorize_logo_premium(
-    input_path: str,
-    output_path: str,
-    use_svgo: bool = True,
-    precision: int = 2,
-    detect_shapes: bool = True,
-    verbose: bool = False,
-)
-```
-
-### `vectorize_photo_premium`
-
-Optimized for photographs.
-
-```python
-from vectalab import vectorize_photo_premium
-
-svg_path, metrics = vectorize_photo_premium(
-    input_path: str,
-    output_path: str,
-    n_colors: int = 32,
-    use_svgo: bool = True,
-    precision: int = 2,
-    verbose: bool = False,
-)
-```
+- Thin wrapper around SVGO-friendly processing. Requires Node.js + svgo.
 
 ---
 
-## SVGO Optimization
-
-### `optimize_with_svgo`
-
-Optimize SVG content using SVGO.
-
-```python
-from vectalab import optimize_with_svgo
-
-optimized_svg, metrics = optimize_with_svgo(
-    svg_content: str,
-    precision: int = 2,
-    multipass: bool = True,
-)
-```
+Quick verification: the authoritative code lives in `vectalab/*` modules — prefer running the functions from these modules for programmatic flows. See the examples page for common recipes.
 
 **Returns:** `Tuple[str, Dict]`
+
 - `str`: Optimized SVG content
 - `Dict`: Metrics with keys:
   - `svgo_applied`: bool
@@ -142,22 +75,10 @@ else:
 
 ---
 
-## Quality Metrics
-
-### `compute_enhanced_quality_metrics`
-
-Compute comprehensive quality metrics.
-
-```python
-from vectalab import compute_enhanced_quality_metrics
-
-metrics = compute_enhanced_quality_metrics(
-    original: np.ndarray,   # Original image (H, W, 3)
-    rendered: np.ndarray,   # Rendered SVG (H, W, 3)
-)
-```
+If you want to programmatically verify quality: use `vectalab.quality` helpers (compute SSIM, LAB‑SSIM, Delta‑E). The code is maintained in `vectalab/quality.py` and is the authoritative place for metric cores.
 
 **Returns:** `Dict[str, float]`
+
 - `ssim_rgb`: Standard SSIM
 - `ssim_lab`: LAB color space SSIM
 - `delta_e`: Average Delta E
