@@ -214,6 +214,8 @@ Typical workflow:
 2. Add the token to your repository under Settings → Secrets → Actions → `PYPI_API_TOKEN`.
 3. Push a git tag (example: `git tag v0.1.0 && git push origin v0.1.0`). The CI workflow will build & publish.
 
+Workflow note: older versions of the `pypa/gh-action-pypi-publish` action required using `@release/v1` or a specific `@vX.Y.Z` tag instead of `@release`; the workflow in this repo now uses `pypa/gh-action-pypi-publish@release/v1` to avoid the "unable to find version 'release'" error.
+
 Repository protections
 ---------------------
 
