@@ -216,6 +216,31 @@ Typical workflow:
 
 Workflow note: older versions of the `pypa/gh-action-pypi-publish` action required using `@release/v1` or a specific `@vX.Y.Z` tag instead of `@release`; the workflow in this repo now uses `pypa/gh-action-pypi-publish@release/v1` to avoid the "unable to find version 'release'" error.
 
+Trusted Publishing (OIDC) support
+--------------------------------
+
+This workflow now supports GitHub's OpenID Connect (OIDC) / Trusted Publishing flow in case you prefer not to store a PyPI API token in repository secrets.
+
+What changed: the publishing job has job-level permissions so it can request an OIDC id token from GitHub:
+
+```yaml
+jobs:
+      publish:
+            permissions:
+                  id-token: write
+                  contents: read
+            runs-on: ubuntu-latest
+            # ...
+```
+
+How to use Trusted Publishing (summary):
+- Configure a Trusted Publisher on PyPI and link it to your GitHub repo / org. See PyPI's Trusted Publisher docs (https://pypi.org/help/#trusted-publishers) for setup details.
+- Once PyPI trusts your repository/organization, the publishing job will request an OIDC id token and exchange it with PyPI to authenticate — no token stored in GitHub secrets required.
+
+Notes:
+- Trusted Publishing is more secure but requires extra PyPI-side steps and verification; if you prefer a simpler setup, create a project-scoped PyPI API token and set it as the `PYPI_API_TOKEN` secret for CI.
+- If you want I can help configure the PyPI side (e.g., add a trusted publisher) or update the workflow to support both modes depending on whether the secret is present.
+
 Repository protections
 ---------------------
 
