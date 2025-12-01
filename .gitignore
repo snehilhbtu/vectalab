@@ -33,9 +33,9 @@ Thumbs.db
 models/*.pth
 *.pth
 
+runiir
 # Test outputs
 tests/output/
-*.svg
 !examples/*.svg
 
 # Temporary files

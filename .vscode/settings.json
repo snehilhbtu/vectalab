@@ -16,6 +16,33 @@
     "terminal.integrated.scrollback": 10000,
     "terminal.integrated.cursorBlinking": true,
     "accessibility.verbosity.terminal": false,
+    // Performance optimizations:
+    // Exclude large or unnecessary folders from search and explorer
+    "files.exclude": {
+        "**/node_modules": true,
+        "**/logs": true,
+        "**/test_runs": true,
+        "**/.git": true
+    },
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/logs": true,
+        "**/test_runs": true,
+        "**/.git": true
+    },
+    // Disable telemetry and experiments for less background activity
+    "telemetry.telemetryLevel": "off",
+    "workbench.enableExperiments": false,
+    // If you experience GPU-related issues, uncomment the next line:
+    // "terminal.integrated.gpuAcceleration": "off",
+    // If you experience slow shell startup, review your ~/.zshrc for slow commands.
+    // Shell-integration tuning (helps when using tmux + zsh inside VSCode)
+    // - make decorations less noisy in busy tmux workflows
+    "terminal.integrated.shellIntegration.decorationsEnabled": "whenFocus",
+    // - keep a reasonably-sized history used by the integrated shell-int features
+    "terminal.integrated.shellIntegration.history": 1000,
+    // - reduce terminal suggestion noise for interactive prompts (helps speed)
+    "terminal.integrated.suggest.quickSuggestions": false,
     "terminal.integrated.profiles.osx": {
         
         "bash": {
@@ -45,5 +72,13 @@
             "path": "pwsh",
             "icon": "terminal-powershell"
         }
-    }
+    },
+
+    // Copilot (workspace preference for heavy Copilot users)
+    // These keys are read by the Copilot extension and some built-in AI features.
+    // You can tweak or remove them if you prefer different behavior.
+    "editor.inlineSuggest.enabled": true,
+    "github.copilot.enable": true,
+    "github.copilot.chat.enable": true,
+    "github.copilot.inlineSuggest.enable": true
 }
