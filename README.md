@@ -121,6 +121,8 @@ See [Modal Setup Guide](docs/modal_setup.md) for details.
 - [Algorithm](docs/algorithm.md) - Technical details
 - [Benchmarks & Protocol](docs/benchmarks.md) - Reproducible benchmarking and scripts
 - [Cloud Setup](docs/modal_setup.md) - Modal integration guide
+ - [Model Weights & Download Instructions](docs/MODELS.md) - where to get large model files and how to place them in the repo
+
 
 ## Architecture
 
