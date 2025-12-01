@@ -7,6 +7,10 @@ on:
 
 jobs:
   publish:
+    # Required for Trusted Publishing (OIDC) flows: allow the job to request an id-token
+    permissions:
+      id-token: write
+      contents: read
     runs-on: ubuntu-latest
 
     steps:
